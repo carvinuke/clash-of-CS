@@ -248,7 +248,8 @@ body[data-mode="defense"] #bottom [data-act="build"], body[data-mode="defense"] 
 .node.reb .dot { border-style: dashed; }
 .node.home .dot { background: radial-gradient(circle at 35% 30%, #fff8, transparent 55%), #3f86e8; }
 .node.home .dot svg { width: 20px; height: 20px; }
-.wdetail { display: flex; flex-direction: column; gap: 10px; padding: 12px; border-radius: 16px; background: rgba(255, 255, 255, 0.06); border-top: 4px solid var(--fc); }
+.wdetail { display: flex; flex-direction: column; gap: 10px; padding: 12px; border-radius: 16px; background: rgba(255, 255, 255, 0.06); border: 1px solid var(--line);
+  background: linear-gradient(color-mix(in srgb, var(--fc) 16%, transparent), rgba(255, 255, 255, 0.04) 90px); border-color: color-mix(in srgb, var(--fc) 40%, transparent); }
 .wd-h h3 { font-size: 1.3em; font-weight: 900; }
 .tier { display: inline-block; padding: 1px 8px; border-radius: 8px; background: var(--fc); color: #111; font-weight: 900; font-size: 0.78em; }
 .drow { display: flex; align-items: center; gap: 8px; }
@@ -315,8 +316,8 @@ input[type="range"] { width: 180px; accent-color: #4aa3ff; }
 .note { display: flex; gap: 8px; align-items: center; padding: 8px 10px; margin-top: 8px; border-radius: 10px; background: rgba(255, 196, 58, 0.14); font-weight: 700; font-size: 0.92em; }
 .tips { margin-top: 10px; background: rgba(255, 90, 80, 0.1); border: 1px solid rgba(255, 90, 80, 0.3); }
 .tips ul { margin: 0; padding-left: 18px; line-height: 1.45; }
-.dreport { padding: 10px 12px; border-radius: 14px; margin-bottom: 10px; background: rgba(255, 255, 255, 0.06); border-left: 5px solid var(--good); display: flex; flex-direction: column; gap: 6px; }
-.dreport.lose { border-left-color: var(--bad); }
+.dreport { padding: 10px 12px; border-radius: 14px; margin-bottom: 10px; background: rgba(99, 224, 122, 0.07); border: 1px solid rgba(99, 224, 122, 0.35); display: flex; flex-direction: column; gap: 6px; }
+.dreport.lose { background: rgba(255, 106, 92, 0.07); border-color: rgba(255, 106, 92, 0.38); }
 .dreport small { color: var(--muted); display: block; }
 .dh { display: flex; gap: 8px; align-items: center; }
 .dh > .ic { width: 30px; height: 30px; }
