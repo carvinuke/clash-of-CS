@@ -95,6 +95,9 @@ js/ui.js          HUD, menus, world map, battle HUD, reports, tooltips
 js/input.js       mouse, touch and keyboard input
 js/tutorial.js    the first-time tutorial
 js/main.js        boot, main loop, game modes and lifecycle (tab hidden, sleep, reload)
+tests/            optional logic checks for developers (plain Node, no packages)
 ```
 
 To rebalance the game, edit the numbers in `js/config.js` and reload the page. Existing saves keep working because saves are validated and missing fields are filled with defaults on load.
+
+If you change the game logic and have Node.js installed, `node tests/logic-test.js` checks placement rules, timers, production caps, every settlement layout, battle determinism, offline raids and save recovery. The game itself never needs Node.
