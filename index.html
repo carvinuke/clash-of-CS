@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <meta name="description" content="Clash of CS: build a settlement, train an army and raid rival settlements. Runs offline in your browser.">
+  <title>Clash of CS</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cpath d='M32 4 8 14v16c0 15 10 26 24 30 14-4 24-15 24-30V14z' fill='%233f86e8' stroke='%231a3d78' stroke-width='4'/%3E%3Cpath d='m22 40 20-20M24 22l18 18' stroke='%23ffd23f' stroke-width='6' stroke-linecap='round'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body data-mode="title">
+  <canvas id="view" aria-label="Game view"></canvas>
+
+  <div id="hud" class="hidden">
+    <div id="topbar"></div>
+    <div id="threat"></div>
+    <div id="side"></div>
+    <div id="bottom"></div>
+    <div id="panel" class="hidden"></div>
+    <div id="placebar" class="hidden"></div>
+  </div>
+  <div id="defhud" class="hidden"></div>
+  <div id="battlehud" class="hidden"></div>
+  <div id="coach" class="hidden"></div>
+  <div id="modal" class="hidden"><div class="mbox"></div></div>
+  <div id="toasts" aria-live="polite"></div>
+  <div id="tip" class="hidden"></div>
+  <div id="title" class="hidden"></div>
+
+  <noscript><div class="nojs">Clash of CS needs JavaScript to run. Please enable it and reload the page.</div></noscript>
+
+  <script src="js/config.js"></script>
+  <script src="js/util.js"></script>
+  <script src="js/base.js"></script>
+  <script src="js/research.js"></script>
+  <script src="js/army.js"></script>
+  <script src="js/economy.js"></script>
+  <script src="js/state.js"></script>
+  <script src="js/pathfinding.js"></script>
+  <script src="js/battle.js"></script>
+  <script src="js/npc.js"></script>
+  <script src="js/threat.js"></script>
+  <script src="js/timesys.js"></script>
+  <script src="js/audio.js"></script>
+  <script src="js/sprites.js"></script>
+  <script src="js/render.js"></script>
+  <script src="js/ui.js"></script>
+  <script src="js/input.js"></script>
+  <script src="js/tutorial.js"></script>
+  <script src="js/main.js"></script>
+</body>
+</html>
