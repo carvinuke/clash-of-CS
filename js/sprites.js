@@ -2162,13 +2162,15 @@
     }
   }
 
+  const HOVER = { mender: 1, gyro: 1 };   // hovering cancels the walk bob, so their frames ignore walking
+
   function poseOf(type, time, o) {
     const TAU = Math.PI * 2;
-    const walkK = o.idle ? -1 : Math.floor((((o.walk != null ? o.walk : time * 10) % TAU) + TAU) % TAU / TAU * 8);
+    const walkK = o.idle || HOVER[type] ? -1 : Math.floor((((o.walk != null ? o.walk : time * 10) % TAU) + TAU) % TAU / TAU * 8);
     const atkK = o.atk != null && o.atk < 1 ? Math.min(3, Math.floor(o.atk * 4)) : -1;
     const flick = type === 'demo' || type === 'mage' || type === 'huntress' ? Math.floor(time * 9) & 1 : 0;
-    const hovK = type === 'mender' || type === 'gyro' ? Math.floor((((time * 3) % TAU) + TAU) % TAU / TAU * 8) : 0;
-    const spinK = type === 'mender' || type === 'gyro' ? Math.floor(time * 18) % 3 : 0;
+    const hovK = HOVER[type] ? Math.floor((((time * 3) % TAU) + TAU) % TAU / TAU * 8) : 0;
+    const spinK = HOVER[type] ? Math.floor(time * 18) % 3 : 0;
     return {
       key: walkK + '|' + atkK + '|' + flick + '|' + hovK + '|' + spinK,
       a: {
@@ -2183,10 +2185,11 @@
   const frames = new Map();
   function frameOf(type, team, time, o) {
     const p = poseOf(type, time, o);
-    const key = type + '|' + team + '|' + (o.skin || 0) + '|' + p.key;
+    const key = type + '|' + team + '|' + (type === 'mender' ? 0 : o.skin || 0) + '|' + p.key;   // the Mender has no face
     let f = frames.get(key);
     if (f) return f;
-    if (frames.size > 1600) frames.clear();
+    // evict only the oldest frame: clearing them all made big armies redraw every pose in one frame
+    if (frames.size >= 1600) frames.delete(frames.keys().next().value);
     f = document.createElement('canvas');
     f.width = FW * FS; f.height = FH * FS;
     const g = f.getContext('2d');
