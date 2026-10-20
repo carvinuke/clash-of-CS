@@ -20,6 +20,7 @@
       let need = 0;
       state.army.queue.forEach(function (q) { need += CS.Army.trainSeconds(state, q.type) * q.count; });
       state.army.progress = Math.max(state.army.progress, need);
+      state.spells.progress = Math.max(state.spells.progress, CS.Army.spellsRemaining(state) + state.spells.progress);
     }
     if (c.heroes) Object.keys(state.heroes).forEach(function (h) { state.heroes[h].readyAt = 0; });
   };

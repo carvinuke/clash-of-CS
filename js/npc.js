@@ -8,28 +8,33 @@
   const NPC = {};
   const SZ = C.grid.size;
 
+  const ALL = C.settlements.concat(C.bosses);   // every raidable base, boss strongholds last
+
   NPC.def = function (id) {
-    for (let i = 0; i < C.settlements.length; i++) if (C.settlements[i].id === id) return C.settlements[i];
+    for (let i = 0; i < ALL.length; i++) if (ALL[i].id === id) return ALL[i];
     return null;
   };
+
+  NPC.all = function () { return ALL; };
 
   NPC.faction = function (s) { return C.factions[s.faction]; };
 
   function blankRecord() {
     return {
       wins: 0, losses: 0, stars: 0, lastRaidAt: 0, rebuildUntil: 0, fortify: 0, gen: 0,
-      taken: { credits: 0, energy: 0 }, takenAt: 0, hostility: 0
+      taken: { credits: 0, energy: 0 }, takenAt: 0, hostility: 0, claimed: 0
     };
   }
 
   NPC.ensureWorld = function (state) {
     const recs = state.world.settlements || {};
     const out = {};
-    C.settlements.forEach(function (s) {
+    ALL.forEach(function (s) {
       const r = recs[s.id] && typeof recs[s.id] === 'object' ? recs[s.id] : {};
       U.fillDefaults(r, blankRecord());
       r.fortify = U.clamp(Math.round(Number(r.fortify) || 0), 0, C.world.maxFortify);
       r.hostility = U.clamp(Math.round(Number(r.hostility) || 0), 0, 3);
+      r.claimed = r.claimed ? 1 : 0;
       ['wins', 'losses', 'stars', 'gen', 'lastRaidAt', 'rebuildUntil', 'takenAt'].forEach(function (k) {
         r[k] = Math.max(0, Number(r[k]) || 0);
       });
@@ -96,10 +101,17 @@
     const key = s.id + ':' + rec.gen + ':' + rec.fortify;
     let lay = layoutCache.get(key);
     if (!lay) {
-      lay = NPC.generate(s.tier, rec.fortify, NPC.seed(s, rec), NPC.archetype(s, rec));
+      lay = NPC.generate(s.defense ? NPC.bossSpec(s) : s.tier, rec.fortify, NPC.seed(s, rec), NPC.archetype(s, rec));
       layoutCache.set(key, lay);
     }
     return lay;
+  };
+
+  // A boss stronghold: its tier's settlement with the boss defense beside the core and extra walls.
+  NPC.bossSpec = function (s) {
+    const T = C.tiers[s.tier], b = Object.assign({}, T.b);
+    b[s.defense] = [1, 1, 1, 1];
+    return Object.assign({}, T, { b: b, walls: [T.walls[0] + s.walls, T.walls[1] + s.walls] });
   };
 
   /*
@@ -228,7 +240,8 @@
         let lv = rng.int(spec[2], spec[3]);
         if (cat === 'defense' || cat === 'trap') lv += fortify;
         const item = { type: type, level: U.clamp(lv, 1, Base.maxLevel(type)) };
-        if (cat === 'defense') defs.push(item);
+        if (C.buildings[type].boss) inner.unshift(item);    // the boss defense sits right by the core
+        else if (cat === 'defense') defs.push(item);
         else if (cat === 'trap') traps.push(item);
         else if (C.buildings[type].stores) inner.push(item);
         else outer.push(item);
@@ -319,7 +332,7 @@
     const phase = rng.range(0, 6.28);
     outer.forEach(function (it, i) {
       const p = ringPoint(i, outer.length, T.area / 2 - 3.5, phase);
-      placeNear(it, p[0], p[1], rng.chance(0.5) ? 1 : 0, enclosure);
+      placeNear(it, p[0], p[1], rng.chance(0.5) && !T.tight ? 1 : 0, enclosure);
     });
 
     // Spend leftover walls as short barricades in front of random defenses.
@@ -337,9 +350,10 @@
     // Hidden traps go on open tiles near the defenses or the core.
     traps.forEach(function (it) {
       const anchor = defBuildings.length ? rng.pick(defBuildings) : core;
+      const sz = Base.size(it.type, 0);
       for (let tries = 0; tries < 40; tries++) {
         const x = Math.round(anchor.x + anchor.w / 2 + rng.range(-4, 4)), y = Math.round(anchor.y + anchor.h / 2 + rng.range(-4, 4));
-        if (fits(x, y, 1, 1, 0)) { put(it.type, it.level, x, y, 0); break; }
+        if (fits(x, y, sz[0], sz[1], 0)) { put(it.type, it.level, x, y, 0); break; }
       }
     });
     return out;
@@ -395,8 +409,10 @@
       if (def.category === 'defense') {
         const A = def.attack;
         let dps = A.kind === 'lance' ? L.dmg * 2.5 : L.dmg / A.period;
-        if (A.splash) dps *= 2.2;
+        if (A.splash || A.cone || A.targeting === 'aura') dps *= 2.2;
+        dps *= (A.shots || 1) * (A.chain ? 2 : 1);
         if (A.kind === 'frost') dps = 6 + L.slow * 40;
+        else if (L.slow) dps += L.slow * 40;
         p += Math.sqrt(L.hp * dps);
       } else if (def.category === 'wall') p += L.hp * 0.01;
       else if (def.category === 'trap') p += L.dmg * 0.25;
@@ -444,7 +460,8 @@
       if (rec.fortify < C.world.maxFortify) rec.fortify++;
       rec.gen++;
     } else rec.losses++;
-    if (res.victory || res.destruction >= 0.1) {
+    if (s.defense && res.victory && !rec.claimed) rec.claimed = 1;    // the boss reward is paid by the caller
+    if (!s.defense && (res.victory || res.destruction >= 0.1)) {
       rec.hostility = Math.min(3, rec.hostility + 1);
       const fac = NPC.faction(s);
       const chance = fac.aggression * (C.attacks.retaliation.base + C.attacks.retaliation.perHostility * rec.hostility);

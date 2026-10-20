@@ -175,6 +175,104 @@ raid(CS.NPC.def('glimmerfen'), { lancer: 8, gyro: 6, colossus: 1, ranger: 10 });
   ok(firstTarget && firstTarget.type === 'bruiser', 'Longshot Bastion targets the toughest attacker first (' + (firstTarget && firstTarget.type) + ')');
 }
 
+// Spell Forge: brewing needs the forge, respects its space and unlocks, and finishes over time.
+{
+  const g = CS.State.newGame(now);
+  g.base.buildings.find(b => b.type === 'core').level = 5;
+  ok(!CS.Army.canBrew(g, 'heal').ok, 'no brewing without a Spell Forge');
+  const sp = CS.Base.findFreeSpot(g, 'forge', 0, 22, 22);
+  CS.Base.newBuilding(g, 'forge', sp.x, sp.y, 0, 3, 'active');
+  g.res.energy = 100000;
+  ok(['heal', 'rage', 'freeze', 'freeze'].every(t => CS.Army.brew(g, t).ok), 'Forge Lv 3 brews Mending Mist, Bloodrush and Frostbind');
+  ok(!CS.Army.brew(g, 'heal').ok, 'brewing stops when the forge is full');
+  ok(/Lv 4/.test(CS.Army.canBrew(g, 'thunder').reason), 'Thunderclap unlocks at Forge Lv 4');
+  CS.Time.step(g, g.lastTick + 400000);
+  ok(g.spells.units.heal === 1 && g.spells.units.freeze === 2 && !g.spells.queue.length, 'spells brew over time: ' + JSON.stringify(g.spells.units));
+  const re = CS.State.sanitize(JSON.parse(JSON.stringify(g)), now);
+  ok(re.spells.units.rage === 1 && re.spells.units.freeze === 2, 'brewed spells survive a save round trip');
+}
+
+// Spells in battle: freeze locks a defense, rage and heal work on troops, thunder hits buildings,
+// and a battle with live spell zones restores deterministically.
+{
+  const b = CS.Battle.create({ kind: 'attack', seed: 9, timeLimit: 150, troops: { bruiser: 4 }, troopLevels: {}, spells: { heal: 1, rage: 1, freeze: 1, thunder: 1 }, spellLv: 4,
+    buildings: [{ id: 1, type: 'core', level: 1, x: 20, y: 20, w: 4, h: 4 }, { id: 2, type: 'blaster', level: 3, x: 14, y: 21, w: 3, h: 3 }] });
+  for (let i = 0; i < 4; i++) CS.Battle.deploy(b, 'bruiser', 8.5, 21 + i * 0.5);
+  CS.Battle.fastForward(b, 150);
+  const bl = b.buildings.find(c => c.type === 'blaster');
+  ok(CS.Battle.cast(b, 'freeze', 15.5, 22.5).ok, 'Frostbind cast on the turret');
+  ok(!CS.Battle.cast(b, 'freeze', 15.5, 22.5).ok, 'a spell cannot be cast more often than it was brought');
+  const u0 = b.units.find(u => !u.dead);
+  ok(CS.Battle.cast(b, 'rage', u0.x, u0.y).ok && CS.Battle.cast(b, 'heal', u0.x, u0.y).ok, 'Bloodrush and Mending Mist cast on the troops');
+  CS.Battle.fastForward(b, 3);
+  ok(bl.frz > 0, 'Frostbind freezes the turret');
+  ok(b.units.some(u => u.rgT > 0), 'Bloodrush enrages troops');
+  const hp0 = bl.hp;
+  ok(CS.Battle.cast(b, 'thunder', 15.5, 22.5).ok && (bl.hp < hp0 || bl.dead), 'Thunderclap blasts the turret (' + Math.round(hp0 - bl.hp) + ' dmg)');
+  const snap = CS.Battle.restore(JSON.parse(JSON.stringify(CS.Battle.serialize(b))));
+  CS.Battle.runToEnd(b); CS.Battle.runToEnd(snap);
+  const res = CS.Battle.result(b);
+  ok(JSON.stringify(res) === JSON.stringify(CS.Battle.result(snap)), 'battle with spell zones restores deterministically');
+  ok(JSON.stringify(res.cast) === JSON.stringify({ freeze: 1, rage: 1, heal: 1, thunder: 1 }), 'result counts the spells cast ' + JSON.stringify(res.cast));
+}
+
+// New defenses and troops.
+{
+  const mk = (type, troops, level, extra) => CS.Battle.create({ kind: 'attack', seed: 5, timeLimit: 150, troops, troopLevels: {},
+    buildings: [{ id: 1, type: 'core', level: 1, x: 20, y: 20, w: 4, h: 4 }, { id: 2, type, level: level || 1, x: 14, y: 21, w: CS.Base.size(type, 0)[0], h: CS.Base.size(type, 0)[1] }].concat(extra || []) });
+  for (const [type, army] of [['brazier', { scout: 6 }], ['hail', { scout: 6 }], ['tempest', { scout: 6 }], ['charge', { bruiser: 3 }], ['thornheart', { bruiser: 6 }], ['bombard', { bruiser: 6 }], ['idol', { bruiser: 6 }]]) {
+    const b = mk(type, army);
+    Object.keys(army).forEach(t => { for (let i = 0; i < army[t]; i++) CS.Battle.deploy(b, t, 8.5, 21 + i * 0.4); });
+    CS.Battle.runToEnd(b);
+    const res = CS.Battle.result(b);
+    ok(res.dmg[type] > 0, CS.CONFIG.buildings[type].name + ' deals damage (' + Math.round(res.dmg[type]) + ')');
+  }
+  // the Ember Brazier is ground only
+  let b = mk('brazier', { gyro: 2 });
+  CS.Battle.deploy(b, 'gyro', 8.5, 22); CS.Battle.deploy(b, 'gyro', 8.5, 23);
+  CS.Battle.runToEnd(b);
+  ok(!CS.Battle.result(b).dmg.brazier, 'Ember Brazier cannot reach flyers');
+  // the Tempest Coil chains between several troops
+  b = mk('tempest', { bruiser: 4 }, 1);
+  for (let i = 0; i < 4; i++) CS.Battle.deploy(b, 'bruiser', 8.5, 21 + i * 0.3);
+  let hurt = 0;
+  for (let i = 0; i < 900 && hurt < 2; i++) { CS.Battle.fastForward(b, 1); hurt = b.units.filter(u => u.hp < u.maxHp).length; }
+  ok(hurt >= 2, 'Tempest Coil arcs to more than one troop (' + hurt + ')');
+  // a Wall Vaulter hops a wall ring to reach the defense inside it
+  const ring = [];
+  for (let x = 12; x <= 18; x++) for (let y = 19; y <= 25; y++) if (x === 12 || x === 18 || y === 19 || y === 25) ring.push({ id: 100 + ring.length, type: 'wall', level: 3, x, y, w: 1, h: 1 });
+  b = mk('blaster', { vaulter: 4 }, 1, ring);
+  for (let i = 0; i < 4; i++) CS.Battle.deploy(b, 'vaulter', 6.5, 21 + i * 0.5);
+  CS.Battle.fastForward(b, 900);
+  const tur = b.buildings.find(c => c.type === 'blaster');
+  ok((tur.dead || tur.hp < tur.maxHp) && b.buildings.filter(c => c.type === 'wall').every(c => c.hp === c.maxHp), 'Wall Vaulters cross a wall ring without breaking it');
+  // Trebuchets and Ember Drakes hurt buildings
+  for (const t of ['trebuchet', 'drake']) {
+    b = mk('mortar', { [t]: 2 }, 1);
+    CS.Battle.deploy(b, t, 6.5, 21); CS.Battle.deploy(b, t, 6.5, 22);
+    CS.Battle.runToEnd(b);
+    ok(CS.Battle.result(b).destroyed > 0, CS.CONFIG.troops[t].name + ' destroys buildings (' + CS.Battle.result(b).destroyed + ')');
+  }
+}
+
+// Boss strongholds: each holds its boss defense, never retaliates and pays its reward once.
+{
+  for (const def of CS.CONFIG.bosses) {
+    const lay = CS.NPC.layout(s, def);
+    const grid = new Int32Array(S * S);
+    let bad = 0;
+    for (const b of lay) for (let y = b.y; y < b.y + b.h; y++) for (let x = b.x; x < b.x + b.w; x++) { if (grid[y * S + x]) bad++; grid[y * S + x] = b.id; }
+    ok(!bad && lay.filter(b => b.type === def.defense).length === 1 && lay.some(b => b.type === 'core'), def.id + ' layout holds its ' + CS.CONFIG.buildings[def.defense].name);
+  }
+  const g = CS.State.newGame(now);
+  const def = CS.CONFIG.bosses[0], rec = CS.NPC.rec(g, def.id);
+  ok(rec && !rec.claimed && CS.NPC.def(def.id) === def, 'boss stronghold has a record');
+  CS.NPC.onRaidResult(g, def, { victory: true, stars: 3, destruction: 1, loot: { credits: 0, energy: 0 } }, now);
+  ok(CS.NPC.rec(g, def.id).claimed && !CS.NPC.rec(g, def.id).hostility, 'a boss victory claims the reward and stirs no hostility');
+  ok(CS.NPC.winsInTier(g, def.tier) === 0, 'boss wins do not count toward revealing tiers');
+  raid(CS.NPC.def('briarheart-grove'), { bruiser: 10, ranger: 16, vaulter: 6, mender: 2 });
+}
+
 // Heroes: status, abilities, summons that never join the army, and recovery after a raid.
 {
   const h = CS.State.newGame(now);

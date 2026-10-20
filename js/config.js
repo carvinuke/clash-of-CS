@@ -131,11 +131,11 @@
         desc: 'Trains troops. Each level unlocks a new unit type, and every Barracks you own speeds up training.',
         max: [1, 1, 2, 2, 3, 3, 4, 4, 4],
         levels: levels({
-          hp:     [500, 580, 670, 770, 880, 1000],
-          unlock: [['scout', 'ranger'], ['bruiser', 'lancer'], ['demo'], ['mage', 'gyro'], ['mender'], ['colossus']],
-          cost:   [200, 1000, 4000, 12000, 30000, 60000],
-          time:   [10, 60, 180, 480, 1200, 2400],
-          core:   [1, 1, 2, 3, 4, 5]
+          hp:     [500, 580, 670, 770, 880, 1000, 1130, 1270],
+          unlock: [['scout', 'ranger'], ['bruiser', 'lancer'], ['demo', 'vaulter'], ['mage', 'gyro'], ['mender'], ['colossus'], ['trebuchet'], ['drake']],
+          cost:   [200, 1000, 4000, 12000, 30000, 60000, 110000, 180000],
+          time:   [10, 60, 180, 480, 1200, 2400, 3600, 4800],
+          core:   [1, 1, 2, 3, 4, 5, 6, 8]
         })
       },
       garrison: {
@@ -159,6 +159,19 @@
           cost: [1500, 5000, 15000, 40000, 90000],
           time: [60, 240, 600, 1500, 3000],
           core: [2, 3, 4, 5, 6]
+        })
+      },
+      forge: {
+        name: 'Spell Forge', category: 'army', size: [3, 3], res: 'energy',
+        desc: 'Brews battle spells you cast during raids. Each level unlocks a spell, holds more of them and makes every spell stronger.',
+        max: [0, 0, 1, 1, 1, 1, 1, 1, 1],
+        levels: levels({
+          hp:       [600, 690, 790, 900, 1020],
+          capacity: [2, 3, 4, 5, 6],                  // spell slots
+          unlock:   [['heal'], ['rage'], ['freeze'], ['thunder'], []],
+          cost:     [8000, 20000, 45000, 90000, 160000],
+          time:     [300, 900, 1800, 3000, 4200],
+          core:     [3, 4, 5, 6, 7]
         })
       },
       hall: {
@@ -288,6 +301,45 @@
           core: [7, 7, 8, 9]
         })
       },
+      brazier: {
+        name: 'Cinder Brazier', category: 'defense', size: [2, 2], res: 'credits',
+        desc: 'A bowl of roaring coals that scorches every ground attacker close to it. Short reach, but nothing nearby escapes it.',
+        max: [0, 1, 1, 2, 2, 2, 3, 3, 3],
+        attack: { kind: 'flame', ground: true, range: 3.2, period: 0.5, targeting: 'aura' },
+        levels: levels({
+          hp:   [520, 600, 700, 810, 940, 1080],
+          dmg:  [6, 8, 10, 13, 16, 20],
+          cost: [1200, 5000, 14000, 40000, 90000, 170000],
+          time: [60, 300, 900, 1800, 3000, 4200],
+          core: [2, 3, 4, 5, 7, 8]
+        })
+      },
+      hail: {
+        name: 'Hailstorm Tower', category: 'defense', size: [3, 3], res: 'credits',
+        desc: 'A frost-stone tower whose triple launcher fires ice shards at three different attackers at once. Hits flyers too.',
+        max: [0, 0, 0, 0, 1, 1, 2, 2, 2],
+        attack: { kind: 'volley', range: 8, period: 1.2, targeting: 'nearest', projectileSpeed: 16, shots: 3 },
+        levels: levels({
+          hp:   [900, 1040, 1200, 1380, 1580],
+          dmg:  [14, 18, 23, 29, 36],
+          cost: [45000, 85000, 140000, 210000, 300000],
+          time: [1200, 2100, 3000, 4200, 5400],
+          core: [5, 6, 7, 8, 9]
+        })
+      },
+      tempest: {
+        name: 'Tempest Coil', category: 'defense', size: [3, 3], res: 'credits',
+        desc: 'A towering copper coil. Its lightning strikes one attacker, then leaps to the next ones nearby, ground or air.',
+        max: [0, 0, 0, 0, 0, 0, 0, 1, 1],
+        attack: { kind: 'chain', range: 6.5, period: 2, targeting: 'nearest', chain: 4, jump: 2.6, falloff: 0.75 },
+        levels: levels({
+          hp:   [1800, 2100, 2450],
+          dmg:  [120, 150, 185],
+          cost: [260000, 380000, 520000],
+          time: [4200, 5400, 6600],
+          core: [8, 8, 9]
+        })
+      },
       mine: {
         name: 'Shock Mine', category: 'trap', size: [1, 1], res: 'credits', hidden: true, instant: true,
         desc: 'Hidden charge that detonates under attackers. Re-arms automatically after each battle.',
@@ -314,6 +366,61 @@
           core: [4, 6, 8]
         })
       },
+      charge: {
+        name: 'Siege Charge', category: 'trap', size: [2, 2], res: 'credits', hidden: true, instant: true,
+        desc: 'Hidden stack of powder kegs. Its huge blast tears through a whole crowd of ground troops. Re-arms after each battle.',
+        max: [0, 0, 0, 0, 0, 1, 1, 2, 2],
+        attack: { kind: 'mine', ground: true, range: 1.3, splash: 3, delay: 0.5 },
+        levels: levels({
+          hp:   [1, 1, 1],
+          dmg:  [300, 400, 520],
+          cost: [30000, 60000, 100000],
+          time: [0, 0, 0],
+          core: [6, 7, 8]
+        })
+      },
+      // Boss defenses: one stands in each boss stronghold and can never be built by the player.
+      // Their level is 1 plus the stronghold's fortification.
+      thornheart: {
+        name: 'Thornheart', category: 'defense', size: [4, 4], res: 'credits', boss: true,
+        desc: 'An ancient tree with a burning green heart. Every pulse lashes out with thorns that wound and root every attacker around it.',
+        max: [0, 0, 0, 0, 0, 0, 0, 0, 0],
+        attack: { kind: 'thorns', range: 5, period: 1.2, targeting: 'aura' },
+        levels: levels({
+          hp:   [4200, 5000, 5900, 7000],
+          dmg:  [22, 28, 35, 43],
+          slow: [0.5, 0.55, 0.6, 0.65],
+          cost: [0, 0, 0, 0],
+          time: [0, 0, 0, 0],
+          core: [1, 1, 1, 1]
+        })
+      },
+      bombard: {
+        name: 'Sunfire Bombard', category: 'defense', size: [4, 4], res: 'credits', boss: true,
+        desc: 'A triple-barrelled siege mortar. Each salvo drops three burning shells across the densest group of ground attackers.',
+        max: [0, 0, 0, 0, 0, 0, 0, 0, 0],
+        attack: { kind: 'barrage', ground: true, range: 12, minRange: 2, period: 3.2, targeting: 'cluster', splash: 1.6, flight: 1.1, shots: 3, spread: 2.2 },
+        levels: levels({
+          hp:   [6500, 7600, 8900, 10400],
+          dmg:  [70, 88, 108, 130],
+          cost: [0, 0, 0, 0],
+          time: [0, 0, 0, 0],
+          core: [1, 1, 1, 1]
+        })
+      },
+      idol: {
+        name: 'Wyrm Idol', category: 'defense', size: [4, 4], res: 'credits', boss: true,
+        desc: 'An obsidian dragon head that turns to face raiders and breathes a cone of fire, burning everything in front of it, ground or air.',
+        max: [0, 0, 0, 0, 0, 0, 0, 0, 0],
+        attack: { kind: 'cone', range: 7, period: 0.6, targeting: 'nearest', cone: 0.85 },
+        levels: levels({
+          hp:   [11000, 12800, 14800, 17000],
+          dmg:  [55, 68, 82, 98],
+          cost: [0, 0, 0, 0],
+          time: [0, 0, 0, 0],
+          core: [1, 1, 1, 1]
+        })
+      },
       wall: {
         name: 'Wall', category: 'wall', size: [1, 1], res: 'credits', instant: true,
         desc: 'Blocks enemy movement. Attackers must break through or walk around. Drag to place a line.',
@@ -329,9 +436,9 @@
 
     buildMenu: [
       { id: 'economy', name: 'Economy', items: ['mint', 'well', 'vault', 'tank', 'bunker'] },
-      { id: 'army', name: 'Army', items: ['barracks', 'garrison', 'lab', 'station', 'hall', 'lodge'] },
-      { id: 'defense', name: 'Defense', items: ['blaster', 'spire', 'mortar', 'frost', 'lance', 'flak', 'rail'] },
-      { id: 'walls', name: 'Walls & Traps', items: ['wall', 'mine', 'snare'] }
+      { id: 'army', name: 'Army', items: ['barracks', 'garrison', 'lab', 'forge', 'station', 'hall', 'lodge'] },
+      { id: 'defense', name: 'Defense', items: ['blaster', 'spire', 'brazier', 'mortar', 'frost', 'lance', 'flak', 'hail', 'rail', 'tempest'] },
+      { id: 'walls', name: 'Walls & Traps', items: ['wall', 'mine', 'snare', 'charge'] }
     ],
 
     // ---------------------------------------------------------------- troops
@@ -390,6 +497,23 @@
         desc: 'A walking siege engine with an enormous health pool. Marches on defenses and its stomp crushes everything around the target, walls included.',
         hp: [2400, 2700, 3050, 3450, 3900], dmg: [60, 68, 77, 87, 98], cost: [1800, 2000, 2200, 2400, 2600]
       },
+      vaulter: {
+        name: 'Vaulter', space: 4, speed: 2.4, range: 0.7, period: 1.1, target: 'defense', vault: true, time: 16,
+        desc: 'Pole-vaulting raider who leaps clean over walls and heads straight for the nearest defense.',
+        hp: [190, 218, 250, 288, 330], dmg: [30, 35, 40, 46, 53], cost: [150, 175, 200, 225, 250]
+      },
+      trebuchet: {
+        name: 'Trebuchet', space: 10, speed: 0.6, range: 7.5, period: 3.2, target: 'defense', time: 45,
+        projectile: 'boulder', splash: 1,
+        desc: 'Crew-hauled siege engine. Lobs boulders at defenses from beyond the reach of most turrets, but it is slow and fragile up close.',
+        hp: [320, 360, 410, 470, 540], dmg: [95, 108, 124, 142, 162], cost: [900, 1000, 1100, 1200, 1300]
+      },
+      drake: {
+        name: 'Ember Drake', space: 16, speed: 1.3, range: 2, period: 1.8, target: 'any', time: 70,
+        air: true, splash: 1.1,
+        desc: 'Young fire drake that flies over walls and breathes flame across a whole cluster of buildings.',
+        hp: [1250, 1400, 1580, 1780, 2000], dmg: [70, 79, 89, 100, 112], cost: [1500, 1650, 1800, 1950, 2100]
+      },
       // Heroes: one of each, never trained. Their level is the level of their building
       // (War Hall, Huntress Lodge), so the arrays below have one entry per building level.
       marshal: {
@@ -404,7 +528,7 @@
         hp: [380, 460, 560, 680, 820, 980, 1160], dmg: [38, 46, 56, 68, 82, 98, 116]
       }
     },
-    troopOrder: ['scout', 'ranger', 'bruiser', 'lancer', 'demo', 'mage', 'gyro', 'mender', 'colossus'],
+    troopOrder: ['scout', 'ranger', 'bruiser', 'lancer', 'demo', 'vaulter', 'mage', 'gyro', 'mender', 'colossus', 'trebuchet', 'drake'],
     heroOrder: ['marshal', 'huntress'],
 
     // Hero abilities fire once per battle when the player taps the hero again after deploying it.
@@ -429,6 +553,33 @@
       }
     },
 
+    // ---------------------------------------------------------------- spells
+    // Brewed in the Spell Forge (cost in Energy, time in seconds) and cast anywhere on the battlefield.
+    // Per-level arrays follow the Forge level. sec = how long the zone lasts.
+    spells: {
+      heal: {
+        name: 'Mending Mist', space: 1, time: 60, radius: 3, sec: 7, color: '#6dff98',
+        desc: 'A soothing green mist. Troops inside it heal quickly while it lasts.',
+        hps: [26, 34, 44, 56, 70], cost: [700, 900, 1150, 1450, 1800]
+      },
+      rage: {
+        name: 'Bloodrush', space: 1, time: 75, radius: 3, sec: 8, color: '#ff5a3c',
+        desc: 'Drums of war. Troops inside the circle hit harder and move faster.',
+        dmgMult: [1.4, 1.5, 1.6, 1.7, 1.8], speedMult: [1.25, 1.28, 1.31, 1.34, 1.38], cost: [900, 1150, 1450, 1800, 2200]
+      },
+      freeze: {
+        name: 'Frostbind', space: 1, time: 75, radius: 2.6, color: '#bfefff',
+        desc: 'A burst of ice that locks every defense and trap inside it in place for a few seconds.',
+        sec: [3, 3.5, 4, 4.5, 5], cost: [1000, 1250, 1550, 1900, 2300]
+      },
+      thunder: {
+        name: 'Thunderclap', space: 2, time: 90, radius: 1.8, color: '#fff3a0',
+        desc: 'Calls down a lightning strike that blasts every building in a small circle, walls included.',
+        dmg: [260, 340, 430, 530, 650], cost: [1300, 1600, 1950, 2350, 2800]
+      }
+    },
+    spellOrder: ['heal', 'rage', 'freeze', 'thunder'],
+
     // ---------------------------------------------------------------- research
     research: {
       // Troop upgrades cost Energy. Level n+1 needs Research Lab level n.
@@ -441,7 +592,10 @@
         mender:  { cost: [10000, 25000, 50000, 90000], time: [300, 900, 1800, 3000] },
         lancer:  { cost: [2500, 7000, 16000, 35000], time: [90, 300, 720, 1500] },
         gyro:    { cost: [8000, 20000, 40000, 70000], time: [300, 720, 1500, 2700] },
-        colossus:{ cost: [20000, 40000, 70000, 110000], time: [600, 1200, 2400, 3600] }
+        colossus:{ cost: [20000, 40000, 70000, 110000], time: [600, 1200, 2400, 3600] },
+        vaulter: { cost: [2500, 7000, 16000, 35000], time: [90, 300, 720, 1500] },
+        trebuchet: { cost: [18000, 36000, 64000, 100000], time: [600, 1200, 2100, 3300] },
+        drake:   { cost: [30000, 55000, 90000, 140000], time: [900, 1800, 3000, 4200] }
       },
       // Settlement technologies cost Credits. lab = Research Lab level needed per tech level.
       techs: {
@@ -468,11 +622,11 @@
 
     // ---------------------------------------------------------------- NPC world
     factions: {
-      thorn:  { name: 'Thornwood Clans', color: '#6fcf4f', biome: 'meadow', aggression: 0.5, layouts: ['spread', 'ring'], troops: ['scout', 'ranger', 'bruiser', 'lancer'] },
-      dune:   { name: 'Dune Reavers', color: '#f0b440', biome: 'desert', aggression: 1.0, layouts: ['compartments', 'ring'], troops: ['scout', 'bruiser', 'demo', 'lancer'] },
+      thorn:  { name: 'Thornwood Clans', color: '#6fcf4f', biome: 'meadow', aggression: 0.5, layouts: ['spread', 'ring'], troops: ['scout', 'ranger', 'bruiser', 'lancer', 'vaulter'] },
+      dune:   { name: 'Dune Reavers', color: '#f0b440', biome: 'desert', aggression: 1.0, layouts: ['compartments', 'ring'], troops: ['scout', 'bruiser', 'demo', 'lancer', 'vaulter'] },
       mire:   { name: 'Mirewatch Coven', color: '#b98cff', biome: 'swamp', aggression: 0.8, layouts: ['spread', 'compartments'], troops: ['ranger', 'mage', 'demo', 'gyro'] },
-      frost:  { name: 'Frostpeak Sentinels', color: '#8fd3ff', biome: 'snow', aggression: 0.6, layouts: ['fortress', 'compartments'], troops: ['bruiser', 'ranger', 'mage', 'colossus'] },
-      cinder: { name: 'Cinder Legion', color: '#ff6b45', biome: 'volcanic', aggression: 1.2, layouts: ['fortress', 'ring'], troops: ['bruiser', 'demo', 'mage', 'scout', 'gyro', 'colossus'] }
+      frost:  { name: 'Frostpeak Sentinels', color: '#8fd3ff', biome: 'snow', aggression: 0.6, layouts: ['fortress', 'compartments'], troops: ['bruiser', 'ranger', 'mage', 'colossus', 'trebuchet'] },
+      cinder: { name: 'Cinder Legion', color: '#ff6b45', biome: 'volcanic', aggression: 1.2, layouts: ['fortress', 'ring'], troops: ['bruiser', 'demo', 'mage', 'scout', 'gyro', 'colossus', 'drake'] }
     },
 
     // Fixed roster of opponents. pos = position on the world map (0..1).
@@ -497,6 +651,18 @@
       { id: 'ember-caldera', name: 'Ember Caldera', faction: 'cinder', tier: 6, leader: 'High Pyrarch Volkan', pos: [0.95, 0.4] }
     ],
 
+    // Boss strongholds: optional NPC bases with a unique boss defense. The first victory pays the
+    // reward once; afterwards they can be raided for loot like any settlement. They never raid you
+    // and do not count toward revealing the next tier.
+    bosses: [
+      { id: 'briarheart-grove', name: 'Briarheart Grove', faction: 'thorn', tier: 2, leader: 'The Thornmother', pos: [0.14, 0.38],
+        defense: 'thornheart', walls: 20, reward: { credits: 9000, energy: 9000, renown: 40, xp: 60 } },
+      { id: 'sunscorch-works', name: 'Sunscorch Works', faction: 'dune', tier: 3, leader: 'Chief Engineer Azhar', pos: [0.9, 0.82],
+        defense: 'bombard', walls: 30, reward: { credits: 30000, energy: 30000, renown: 70, xp: 120 } },
+      { id: 'wyrmfire-maw', name: 'Wyrmfire Maw', faction: 'cinder', tier: 5, leader: 'Ashbinder Morrow', pos: [0.63, 0.24],
+        defense: 'idol', walls: 40, reward: { credits: 110000, energy: 110000, renown: 120, xp: 260 } }
+    ],
+
     // What an NPC settlement of each tier looks like. [min,max] counts and levels.
     tiers: [
       null,
@@ -504,19 +670,19 @@
         b: { blaster: [1, 1, 1, 1], mint: [2, 2, 1, 2], well: [1, 2, 1, 2], vault: [1, 1, 1, 1], tank: [1, 1, 1, 1], barracks: [1, 1, 1, 1], garrison: [1, 1, 1, 1], station: [1, 1, 1, 1] },
         loot: [900, 1200], bonus: 200, armyPower: 10 },
       { core: 2, area: 26, walls: [24, 36], wallLv: [1, 2],
-        b: { blaster: [2, 2, 1, 2], spire: [1, 1, 1, 2], mine: [1, 2, 1, 1], mint: [3, 3, 2, 3], well: [2, 3, 2, 3], vault: [1, 1, 2, 2], tank: [1, 1, 2, 2], barracks: [1, 1, 1, 2], garrison: [1, 2, 1, 2], lab: [1, 1, 1, 1], station: [2, 2, 1, 1] },
+        b: { blaster: [2, 2, 1, 2], spire: [1, 1, 1, 2], brazier: [0, 1, 1, 1], mine: [1, 2, 1, 1], mint: [3, 3, 2, 3], well: [2, 3, 2, 3], vault: [1, 1, 2, 2], tank: [1, 1, 2, 2], barracks: [1, 1, 1, 2], garrison: [1, 2, 1, 2], lab: [1, 1, 1, 1], station: [2, 2, 1, 1] },
         loot: [2200, 3200], bonus: 500, armyPower: 22 },
       { core: 3, area: 30, walls: [44, 60], wallLv: [2, 3],
-        b: { blaster: [3, 3, 2, 3], spire: [2, 2, 2, 3], mortar: [1, 1, 1, 1], frost: [1, 1, 1, 1], mine: [2, 3, 1, 1], mint: [3, 4, 3, 4], well: [3, 4, 3, 4], vault: [2, 2, 3, 3], tank: [2, 2, 3, 3], barracks: [2, 2, 2, 3], garrison: [2, 2, 2, 3], lab: [1, 1, 2, 2], station: [2, 3, 1, 2] },
+        b: { blaster: [3, 3, 2, 3], spire: [2, 2, 2, 3], brazier: [1, 1, 1, 2], mortar: [1, 1, 1, 1], frost: [1, 1, 1, 1], mine: [2, 3, 1, 1], mint: [3, 4, 3, 4], well: [3, 4, 3, 4], vault: [2, 2, 3, 3], tank: [2, 2, 3, 3], barracks: [2, 2, 2, 3], garrison: [2, 2, 2, 3], lab: [1, 1, 2, 2], station: [2, 3, 1, 2] },
         loot: [5000, 7000], bonus: 1200, armyPower: 40 },
       { core: 4, area: 34, walls: [70, 90], wallLv: [3, 4],
-        b: { blaster: [3, 3, 3, 4], spire: [3, 3, 3, 4], mortar: [2, 2, 2, 3], frost: [1, 1, 2, 2], lance: [1, 1, 1, 1], flak: [0, 1, 1, 1], mine: [3, 4, 2, 2], mint: [4, 5, 4, 5], well: [4, 5, 4, 5], vault: [2, 2, 4, 4], tank: [2, 2, 4, 4], barracks: [2, 2, 3, 4], garrison: [3, 3, 3, 4], lab: [1, 1, 3, 3], station: [3, 4, 2, 2] },
+        b: { blaster: [3, 3, 3, 4], spire: [3, 3, 3, 4], brazier: [1, 2, 2, 3], mortar: [2, 2, 2, 3], frost: [1, 1, 2, 2], lance: [1, 1, 1, 1], flak: [0, 1, 1, 1], mine: [3, 4, 2, 2], mint: [4, 5, 4, 5], well: [4, 5, 4, 5], vault: [2, 2, 4, 4], tank: [2, 2, 4, 4], barracks: [2, 2, 3, 4], garrison: [3, 3, 3, 4], lab: [1, 1, 3, 3], forge: [1, 1, 1, 2], station: [3, 4, 2, 2] },
         loot: [11000, 15000], bonus: 3000, armyPower: 65 },
       { core: 5, area: 38, walls: [100, 125], wallLv: [4, 5],
-        b: { blaster: [4, 4, 4, 5], spire: [3, 3, 4, 5], mortar: [2, 2, 3, 4], frost: [2, 2, 2, 3], lance: [1, 2, 1, 2], flak: [1, 1, 1, 2], mine: [4, 5, 2, 3], snare: [1, 2, 1, 1], mint: [5, 6, 5, 6], well: [5, 6, 5, 6], vault: [3, 3, 5, 5], tank: [3, 3, 5, 5], barracks: [3, 3, 4, 5], garrison: [3, 3, 4, 5], lab: [1, 1, 4, 4], station: [4, 4, 3, 3] },
+        b: { blaster: [4, 4, 4, 5], spire: [3, 3, 4, 5], brazier: [2, 2, 3, 4], mortar: [2, 2, 3, 4], frost: [2, 2, 2, 3], lance: [1, 2, 1, 2], flak: [1, 1, 1, 2], hail: [0, 1, 1, 1], mine: [4, 5, 2, 3], snare: [1, 2, 1, 1], mint: [5, 6, 5, 6], well: [5, 6, 5, 6], vault: [3, 3, 5, 5], tank: [3, 3, 5, 5], barracks: [3, 3, 4, 5], garrison: [3, 3, 4, 5], lab: [1, 1, 4, 4], forge: [1, 1, 2, 3], station: [4, 4, 3, 3] },
         loot: [24000, 32000], bonus: 7000, armyPower: 95 },
       { core: 7, area: 40, walls: [130, 160], wallLv: [6, 7],
-        b: { blaster: [5, 5, 6, 7], spire: [4, 5, 6, 7], mortar: [3, 3, 6, 7], frost: [2, 2, 4, 5], lance: [2, 2, 3, 4], flak: [2, 2, 3, 4], rail: [1, 1, 1, 2], mine: [5, 6, 3, 4], snare: [2, 3, 1, 2], mint: [6, 6, 7, 8], well: [6, 6, 7, 8], vault: [4, 4, 6, 7], tank: [4, 4, 6, 7], bunker: [1, 1, 1, 1], barracks: [3, 3, 5, 6], garrison: [4, 4, 5, 6], lab: [1, 1, 5, 5], station: [4, 5, 3, 4] },
+        b: { blaster: [5, 5, 6, 7], spire: [4, 5, 6, 7], brazier: [2, 3, 4, 5], mortar: [3, 3, 6, 7], frost: [2, 2, 4, 5], lance: [2, 2, 3, 4], flak: [2, 2, 3, 4], hail: [1, 2, 2, 3], rail: [1, 1, 1, 2], tempest: [0, 1, 1, 1], mine: [5, 6, 3, 4], snare: [2, 3, 1, 2], charge: [1, 1, 1, 2], mint: [6, 6, 7, 8], well: [6, 6, 7, 8], vault: [4, 4, 6, 7], tank: [4, 4, 6, 7], bunker: [1, 1, 1, 1], barracks: [3, 3, 5, 6], garrison: [4, 4, 5, 6], lab: [1, 1, 5, 5], forge: [1, 1, 4, 5], station: [4, 5, 3, 4] },
         loot: [45000, 60000], bonus: 12000, armyPower: 130 }
     ],
 

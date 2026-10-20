@@ -22,6 +22,7 @@
       res: { credits: C.start.credits, energy: C.start.energy },
       base: { buildings: [], nextId: 1 },
       army: { units: {}, queue: [], progress: 0 },
+      spells: { units: {}, queue: [], progress: 0 },
       research: { levels: {}, active: null },
       world: { settlements: {}, nextNewsAt: now + 10 * 60000, seed: (now % 100000) + 7 },
       threat: {
@@ -144,6 +145,13 @@
       return q && C.troops[q.type] && q.count > 0;
     }).map(function (q) { return { type: q.type, count: Math.round(num(q.count, 1, 1, 999)), unitCost: num(q.unitCost, 0, 0) }; });
     s.army.progress = num(s.army.progress, 0, 0);
+    const spells = {};
+    Object.keys(s.spells.units || {}).forEach(function (t) { if (C.spells[t]) spells[t] = Math.round(num(s.spells.units[t], 0, 0, 99)); });
+    s.spells.units = spells;
+    s.spells.queue = (Array.isArray(s.spells.queue) ? s.spells.queue : []).filter(function (q) {
+      return q && C.spells[q.type] && q.count > 0;
+    }).map(function (q) { return { type: q.type, count: Math.round(num(q.count, 1, 1, 99)), unitCost: num(q.unitCost, 0, 0) }; });
+    s.spells.progress = num(s.spells.progress, 0, 0);
 
     // Heroes.
     const heroes = {};

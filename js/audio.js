@@ -8,7 +8,7 @@
   const A = { ctx: null, settings: { sfx: true, music: true, volume: 0.7 }, theme: null };
   let master = null, sfxBus = null, musicBus = null, noiseBuf = null;
   const last = {};
-  const GAP = { hit: 70, blaster: 90, spire: 70, bow: 60, orb: 80, death: 60, frost: 350, heal: 260, deploy: 45, coins: 110, energy: 110, boom: 90, destroy: 120, wallBreak: 90, mortar: 150, mortarHit: 120, mine: 120, trainDone: 400, click: 40 };
+  const GAP = { hit: 70, blaster: 90, spire: 70, bow: 60, orb: 80, death: 60, frost: 350, heal: 260, deploy: 45, coins: 110, energy: 110, boom: 90, destroy: 120, wallBreak: 90, mortar: 150, mortarHit: 120, mine: 120, trainDone: 400, click: 40, flame: 160, zap: 120, thunder: 200 };
 
   A.init = function (settings) { A.settings = settings; };
 
@@ -128,6 +128,9 @@
     boom: function () { noise({ f: 1600, f2: 70, dur: 0.6, vol: 0.5 }); tone({ f: 100, f2: 40, dur: 0.4, vol: 0.35 }); },
     mine: function () { tone({ f: 1500, dur: 0.05, type: 'square', vol: 0.06, lp: 3000 }); tone({ f: 1500, dur: 0.05, type: 'square', vol: 0.06, lp: 3000, delay: 0.12 }); },
     frost: function () { tone({ f: 2400, f2: 1600, dur: 0.4, type: 'sine', vol: 0.04 }); noise({ f: 6000, dur: 0.3, vol: 0.05, filter: 'highpass' }); },
+    flame: function () { noise({ f: 900, f2: 300, dur: 0.35, vol: 0.18, filter: 'bandpass', q: 0.7 }); },
+    zap: function () { tone({ f: 1800, f2: 400, dur: 0.12, type: 'sawtooth', vol: 0.05, lp: 4000 }); noise({ f: 5000, dur: 0.08, vol: 0.08, filter: 'highpass' }); },
+    thunder: function () { noise({ f: 4000, f2: 90, dur: 0.9, vol: 0.5 }); tone({ f: 70, f2: 30, dur: 0.7, vol: 0.4 }); },
     heal: function () { chord([84, 88], { dur: 0.2, type: 'sine', vol: 0.05, spread: 0.05 }); },
     warning: function () { for (let i = 0; i < 3; i++) { tone({ f: 880, dur: 0.12, type: 'square', vol: 0.06, lp: 2000, delay: i * 0.3 }); tone({ f: 660, dur: 0.12, type: 'square', vol: 0.06, lp: 2000, delay: i * 0.3 + 0.15 }); } },
     siren: function () { for (let i = 0; i < 2; i++) tone({ f: 500, f2: 900, dur: 0.5, type: 'sawtooth', vol: 0.07, lp: 1800, delay: i * 0.55 }); FX.horn(); },

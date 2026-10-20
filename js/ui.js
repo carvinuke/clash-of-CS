@@ -52,6 +52,10 @@
     return '<img class="tthumb" alt="" draggable="false" src="' + Spr.troopIcon(type, team, px || 72) + '">';
   }
 
+  function spellImg(type, px) {
+    return '<img class="tthumb" alt="" draggable="false" src="' + Spr.spellIcon(type, px || 72) + '">';
+  }
+
   function until(t) { return '<span data-until="' + t + '">' + U.fmtTime((t - CS.Clock.now()) / 1000) + '</span>'; }
 
   function bar(from, to, cls) {
@@ -309,6 +313,12 @@
       rows.push('<tr><td>Trains</td><td colspan="2">' + C.buildings.barracks.levels.slice(0, lv).reduce(function (a, l) { return a.concat(l.unlock); }, []).map(function (t) { return C.troops[t].name; }).join(', ') + '</td></tr>');
       if (N) rows.push('<tr><td>Next level</td><td colspan="2" class="nx">Unlocks ' + N.unlock.map(function (t) { return C.troops[t].name; }).join(', ') + '</td></tr>');
     }
+    if (b.type === 'forge') {
+      row('Spell space', L.capacity, N && N.capacity);
+      rows.push('<tr><td>Brews</td><td colspan="2">' + def.levels.slice(0, lv).reduce(function (a, l) { return a.concat(l.unlock); }, []).map(function (t) { return C.spells[t].name; }).join(', ') + '</td></tr>');
+      if (N && N.unlock.length) rows.push('<tr><td>Next level</td><td colspan="2" class="nx">Unlocks ' + N.unlock.map(function (t) { return C.spells[t].name; }).join(', ') + '</td></tr>');
+      if (b.level >= 1) rows.push('<tr><td>Spell power</td><td colspan="2">Spells grow stronger with every Forge level</td></tr>');
+    }
     if (b.type === 'station') row('Repairs', L.repair, N && N.repair, function (v) { return v + ' HP/s'; });
     if (def.hero) {
       const h = def.hero, T = C.troops[h], H = C.heroes[h], i = lv - 1, n = N ? lv : -1;
@@ -327,6 +337,10 @@
       else if (A.kind === 'mine') row('Blast damage', L.dmg * dm, N && N.dmg * dm, function (v) { return Math.round(v); });
       else row('Damage', L.dmg * dm, N && N.dmg * dm, function (v) { return Math.round(v) + (A.period ? ' every ' + A.period + 's' : ''); });
       if (L.slow) row('Slow', L.slow * 100, N && N.slow * 100, function (v) { return Math.round(v) + '%'; });
+      if (A.shots > 1) rows.push('<tr><td>Volley</td><td colspan="2">' + A.shots + ' shots' + (A.spread ? ', scattered' : '') + '</td></tr>');
+      if (A.chain) rows.push('<tr><td>Chain</td><td colspan="2">Arcs to ' + A.chain + ' targets, ' + Math.round((1 - A.falloff) * 100) + '% weaker each jump</td></tr>');
+      if (A.kind === 'cone') rows.push('<tr><td>Breath</td><td colspan="2">Burns every troop in a cone</td></tr>');
+      if (A.targeting === 'aura') rows.push('<tr><td>Aura</td><td colspan="2">Hits every troop in range at once</td></tr>');
       rows.push('<tr><td>Range</td><td colspan="2">' + (A.minRange ? A.minRange + '&ndash;' : '') + A.range + ' tiles' + (A.splash ? ', splash ' + A.splash : '') + '</td></tr>');
       rows.push('<tr><td>Targets</td><td colspan="2">' + (A.ground ? 'Ground only' : A.air ? 'Air only' : 'Ground and air') + (A.targeting === 'toughest' ? ', toughest first' : '') + '</td></tr>');
     }
@@ -389,6 +403,7 @@
     if (!busy) actions.push('<button class="sbtn" data-act="move" data-tip="Move this building <kbd>E</kbd>">' + ic('move') + 'Move</button>');
     if (b.type === 'barracks' || b.type === 'garrison') actions.push('<button class="sbtn" data-act="army">' + ic('army') + 'Train</button>');
     if (b.type === 'lab') actions.push('<button class="sbtn" data-act="research">' + ic('flask') + 'Research</button>');
+    if (b.type === 'forge') actions.push('<button class="sbtn" data-act="army">' + ic('flask') + 'Brew</button>');
     if (b.timer && !busy) actions.push('<button class="sbtn danger" data-act="cancelTimer">' + ic('close') + 'Cancel</button>');
     return '<div class="ph">' + thumb(b.type, Math.max(1, b.level), null, 116) +
       '<div class="pt"><h3>' + esc(def.name) + '</h3><div class="pl"><span>Level <b>' + b.level + '</b> of ' + def.levels.length + '</span></div>' +
@@ -638,6 +653,58 @@
       status + '</div></div>';
   }
 
+  // Spells are brewed one at a time at the Spell Forge and cast anywhere during a raid.
+  function spellEffect(type, lv) {
+    const P = C.spells[type], i = U.clamp(lv, 1, 5) - 1;
+    return type === 'heal' ? 'Heals <b>' + P.hps[i] + '</b>/s for ' + P.sec + 's'
+      : type === 'rage' ? '<b>x' + P.dmgMult[i] + '</b> damage for ' + P.sec + 's'
+        : type === 'freeze' ? 'Freezes for <b>' + P.sec[i] + 's</b>'
+          : 'Blast <b>' + P.dmg[i] + '</b>';
+  }
+  function spellCard(st, type) {
+    const P = C.spells[type], lv = Army.forgeLevel(st), need = Army.spellUnlockLevel(type), unlocked = lv >= need;
+    let act;
+    if (!lv) act = why('Build a Spell Forge (Command Core Lv ' + Base.unlockCore('forge') + ') to brew spells', 'lock', 'lock');
+    else if (!unlocked) act = why('Unlocks at Spell Forge Lv ' + need, 'lock', 'lock');
+    else {
+      const chk = Army.canBrew(st, type);
+      act = '<span class="tk-train"><button class="sbtn" data-act="brew" data-type="' + type + '" aria-label="Brew ' + esc(P.name) + '"' + (chk.ok ? '' : ' disabled') + '>+1</button></span>' +
+        (chk.ok ? '' : why(chk.reason, chk.short ? 'short' : 'busy', chk.short ? 'warn' : 'flask'));
+    }
+    return '<div class="tcard' + (unlocked ? '' : ' locked') + '" data-tip="' + esc(P.desc) + '">' +
+      '<span class="tk-art">' + spellImg(type, 72) + '</span>' +
+      '<div class="tk-main"><div class="tk-head"><b class="tk-name">' + esc(P.name) + '</b>' + (lv ? '<span class="lv">Lv ' + lv + '</span>' : '') + '</div>' +
+      '<div class="tk-meta">' + costHtml({ energy: Army.spellCost(st, type) }, unlocked ? st : null) + '<span class="space">' + ic('flask') + P.space + '</span><span class="time">' + ic('clock') + U.fmtTime(P.time) + '</span></div>' +
+      '<div class="tk-stats"><span>' + spellEffect(type, Math.max(1, lv)) + '</span><span>Radius <b>' + P.radius + '</b></span></div>' +
+      act + '</div></div>';
+  }
+
+  function spellsHtml(st) {
+    const sp = st.spells, cap = Army.spellCapacity(st), f = Army.forge(st);
+    const cards = '<div class="tcards">' + C.spellOrder.map(function (t) { return spellCard(st, t); }).join('') + '</div>';
+    const head4 = '<div class="h4row"><h4>Spells</h4>' + (cap ? '<span class="h4side"><b>' + Army.spellSpace(st) + ' / ' + cap + '</b> Forge space</span>' : '') + '</div>';
+    if (!f) return head4 + cards;
+    const chips = C.spellOrder.filter(function (t) { return sp.units[t] > 0; }).map(function (t) {
+      return '<span class="chipT" data-tip="' + esc(C.spells[t].name) + '">' + spellImg(t, 44) + '<b>' + sp.units[t] + '</b></span>';
+    }).join('');
+    let queue = '<p class="hint">Nothing brewing.</p>', total = '';
+    if (sp.queue.length) {
+      const now = CS.Clock.now(), on = Base.isFunctional(f);
+      const need = C.spells[sp.queue[0].type].time, left = Math.max(0, need - sp.progress);
+      queue = sp.queue.map(function (e, i) {
+        const name = esc(C.spells[e.type].name);
+        let prog = '';
+        if (i === 0) prog = on ? '<span class="qnext">Next in ' + until(now + left * 1000) + '</span>' + bar(now - (need - left) * 1000, now + left * 1000, 'q') : why('The Spell Forge is not working', 'busy', 'warn');
+        return '<div class="qrow">' + spellImg(e.type, 40) + '<div class="qmain"><span class="qname"><b>' + e.count + '&times;</b> ' + name + '</span>' + prog + '</div>' +
+          '<button class="xs" data-act="unbrew" data-i="' + i + '" aria-label="Remove one ' + name + '" data-tip="Remove one (full refund)">' + ICON.close + '</button></div>';
+      }).join('');
+      total = on ? '<span class="h4side">All done in <b>' + until(now + Army.spellsRemaining(st) * 1000) + '</b></span>' : '<span class="h4side">Paused until the Spell Forge is working</span>';
+    }
+    return head4 + cards + '<div class="acols"><section><div class="h4row"><h4>Brewed spells</h4></div>' +
+      (chips ? '<div class="chips">' + chips + '</div>' : '<p class="hint">No spells yet. Brewed spells go with you on every raid.</p>') + '</section>' +
+      '<section><div class="h4row"><h4>Brewing</h4>' + total + '</div>' + queue + '</section></div>';
+  }
+
   MODALS.army = function () {
     const st = G.state;
     const cap = Army.capacity(st), used = Army.armySpace(st), q = Army.queueSpace(st);
@@ -670,7 +737,7 @@
       '<h4>Heroes</h4><div class="tcards">' + C.heroOrder.map(function (h) { return heroCard(st, h); }).join('') + '</div>' +
       '<div class="acols"><section><div class="h4row"><h4>Your army</h4><span class="h4side"><b>' + Army.totalUnits(st) + '</b> troops</span></div>' +
       (chips ? '<div class="chips">' + chips + '</div>' : '<p class="hint">No troops yet. Train some to raid enemy settlements.</p>') + '</section>' +
-      '<section><div class="h4row"><h4>Training</h4>' + total + '</div>' + queue + '</section></div></div>';
+      '<section><div class="h4row"><h4>Training</h4>' + total + '</div>' + queue + '</section></div>' + spellsHtml(st) + '</div>';
   };
 
   // ----- research
@@ -774,7 +841,7 @@
     const g = cv.getContext('2d');
     const BIO = CS.Render.BIOMES;
     // one territory per settlement plus the player's home; coordinates in map heights
-    const sites = C.settlements.map(function (s) { return { x: s.pos[0] * aspect, y: s.pos[1], biome: C.factions[s.faction].biome, fog: s.tier > maxTier }; });
+    const sites = C.settlements.concat(C.bosses).map(function (s) { return { x: s.pos[0] * aspect, y: s.pos[1], biome: C.factions[s.faction].biome, fog: s.tier > maxTier }; });
     sites.push({ x: HOME_POS[0] * aspect, y: HOME_POS[1], biome: 'home', fog: false });
     const n = sites.length;
     const sx = new Float64Array(n), sy = new Float64Array(n), span = new Float64Array(n * n);
@@ -1005,7 +1072,7 @@
       const fresh = open.find(function (s) { return !NPC.rec(st, s.id).wins; });
       UI.worldSel = (fresh || open[0]).id;
     }
-    const nodes = C.settlements.map(function (s) {
+    let nodes = C.settlements.map(function (s) {
       const rec = NPC.rec(st, s.id), fac = NPC.faction(s);
       const open = s.tier <= maxTier;
       const reb = open && rec.rebuildUntil > t;
@@ -1013,6 +1080,15 @@
       return '<button class="node' + (open ? '' : ' locked') + (reb ? ' reb' : '') + (sel ? ' sel' : '') + '" style="left:' + (s.pos[0] * 100) + '%;top:' + (s.pos[1] * 100) + '%" data-act="node" data-id="' + s.id + '"' +
         ' aria-pressed="' + sel + '" aria-label="' + esc(s.name) + ', tier ' + s.tier + (open ? '' : ', locked') + (reb ? ', rebuilding' : '') + (rec.stars ? ', ' + rec.stars + ' of 3 stars' : '') + '">' +
         '<span class="pin">' + CS.Icons.crest(s.faction, fac.color) + '<b class="tno">' + s.tier + '</b>' + (open ? (reb ? '<i class="nb">' + ICON.hammer + '</i>' : '') : '<i class="nb">' + ICON.lock + '</i>') + '</span>' +
+        '<span class="nl">' + esc(s.name) + (rec.stars ? stars(rec.stars) : '') + (reb ? '<small>' + until(rec.rebuildUntil) + '</small>' : '') + '</span></button>';
+    }).join('');
+    // boss strongholds: optional, each with a one-time reward
+    nodes += C.bosses.map(function (s) {
+      const rec = NPC.rec(st, s.id), fac = NPC.faction(s);
+      const open = s.tier <= maxTier, reb = open && rec.rebuildUntil > t, sel = UI.worldSel === s.id;
+      return '<button class="node boss' + (open ? '' : ' locked') + (reb ? ' reb' : '') + (sel ? ' sel' : '') + (rec.claimed ? ' claimed' : '') + '" style="left:' + (s.pos[0] * 100) + '%;top:' + (s.pos[1] * 100) + '%" data-act="node" data-id="' + s.id + '"' +
+        ' aria-pressed="' + sel + '" aria-label="' + esc(s.name) + ', boss stronghold, tier ' + s.tier + (open ? '' : ', locked') + (rec.claimed ? ', reward claimed' : '') + '">' +
+        '<span class="pin">' + CS.Icons.crest(s.faction, fac.color) + '<i class="nb boss-b">' + (open ? ICON.skull : ICON.lock) + '</i></span>' +
         '<span class="nl">' + esc(s.name) + (rec.stars ? stars(rec.stars) : '') + (reb ? '<small>' + until(rec.rebuildUntil) + '</small>' : '') + '</span></button>';
     }).join('');
     const home = '<div class="node home" style="left:' + HOME_POS[0] * 100 + '%;top:' + HOME_POS[1] * 100 + '%"><span class="pin">' +
@@ -1032,12 +1108,15 @@
     else {
       const diff = NPC.difficulty(st, s);
       const defs = NPC.defenseSummary(st, s);
-      const chips = Object.keys(defs).map(function (type) {
+      const chips = Object.keys(defs).filter(function (type) { return !C.buildings[type].boss; }).map(function (type) {
         const d = defs[type];
         return '<span class="dchip" data-tip="' + esc(C.buildings[type].name) + ' &times;' + d.n + ', up to Lv ' + d.maxLv + '">' + thumb(type, d.maxLv, fac.color, 48) +
           '<span><b>&times;' + d.n + '</b><small>Lv ' + d.maxLv + '</small></span></span>';
       }).join('');
-      body = kv('Difficulty', '<b class="diff ' + diff.cls + '">' + diff.label + '</b><small>for your current army</small>') +
+      const boss = s.defense ? C.buildings[s.defense] : null;
+      body = (boss ? kv('Boss', '<span class="dchip boss" data-tip="' + esc(boss.desc) + '">' + thumb(s.defense, Math.min(boss.levels.length, 1 + rec.fortify), fac.color, 48) + '<span><b>' + esc(boss.name) + '</b><small>' + esc(boss.desc) + '</small></span></span>') +
+        kv('Reward', rec.claimed ? '<small>' + ic('check') + 'Claimed. You can still raid it for loot.</small>' : costHtml({ credits: s.reward.credits, energy: s.reward.energy }) + '<small>+' + s.reward.renown + ' renown, +' + s.reward.xp + ' XP, once, for your first victory</small>', 'reward') : '') +
+        kv('Difficulty', '<b class="diff ' + diff.cls + '">' + diff.label + '</b><small>for your current army</small>') +
         kv('Available loot', costHtml(NPC.loot(st, s, t)) + '<small>+' + U.fmt(C.tiers[s.tier].bonus) + ' of each for a 3-star win</small>') +
         kv('Defenses', chips ? '<span class="dchips">' + chips + '</span>' : '<small>None</small>') +
         kv('Record', '<span><b>' + rec.wins + '</b> won &middot; <b>' + rec.losses + '</b> lost</span>' + (rec.stars ? stars(rec.stars) : '') + (rec.fortify ? '<small>Fortified &times;' + rec.fortify + ' after your victories</small>' : '')) +
@@ -1050,9 +1129,9 @@
     else if (chk.rebuilding) action = '<button class="mbtn" disabled>' + ic('hammer') + '<span>Rebuilding</span></button>';
     else action = '<button class="mbtn" disabled>' + ic(open ? 'sword' : 'lock') + '<span>' + (open ? esc(chk.reason) : 'Locked') + '</span></button>';
     return '<div class="wdetail"><div class="wd-h"><span class="wd-crest">' + CS.Icons.crest(s.faction, fac.color) + '</span>' +
-      '<div class="wd-t"><span class="lbl">Tier ' + s.tier + '</span><h3>' + esc(s.name) + '</h3><small>' + esc(fac.name) + ' &middot; led by ' + esc(s.leader) + '</small></div></div>' +
+      '<div class="wd-t"><span class="lbl">' + (s.defense ? 'Boss stronghold &middot; ' : '') + 'Tier ' + s.tier + '</span><h3>' + esc(s.name) + '</h3><small>' + esc(fac.name) + ' &middot; led by ' + esc(s.leader) + '</small></div></div>' +
       '<div class="wd-b">' + body + '</div><div class="wd-act">' + action +
-      '<p class="hint">Win ' + C.world.unlockWins + ' raids in a tier to reveal the next one. Defeated settlements rebuild stronger and richer.</p></div></div>';
+      '<p class="hint">' + (s.defense ? 'Boss strongholds never raid you and do not count toward revealing tiers.' : 'Win ' + C.world.unlockWins + ' raids in a tier to reveal the next one. Defeated settlements rebuild stronger and richer.') + '</p></div></div>';
   }
 
   // ----- log
@@ -1273,6 +1352,8 @@
     close: function () { UI.close(); },
     train: function (el) { G.train(el.dataset.type, Number(el.dataset.n)); },
     untrain: function (el) { G.untrain(Number(el.dataset.i)); },
+    brew: function (el) { G.brew(el.dataset.type); },
+    unbrew: function (el) { G.unbrew(Number(el.dataset.i)); },
     doResearch: function (el) { G.research(el.dataset.key); },
     cancelResearch: function () { UI.confirm({ title: 'Cancel research?', text: 'Stop the current research and get half of its cost back?', yes: 'Cancel it', no: 'Keep going', danger: true }, function () { G.cancelResearch(); UI.open('research'); }); },
     node: function (el) { UI.worldSel = el.dataset.id; renderModal(); CS.Audio.play('click'); },
@@ -1417,25 +1498,42 @@
     setClass(end, 'mbtn' + (dep && !b.ended ? ' danger' : ''));   // a finished battle's button reads as disabled
     setHtml(end, ic(dep ? 'flag' : 'home') + '<span>' + (dep ? 'End battle' : 'Return home') + '</span>');
     end.disabled = b.ended;
-    setText('bhHint', b.ended ? '' : scout ? 'Look around, pick a troop, then tap outside the red zone. Hold to deploy a stream of troops.'
-      : Bt.poolTotal(b) ? 'Destroy ' + U.pct(C.battle.winDestruction) + '% of the buildings or the Command Core to win.' : 'All troops deployed.');
+    const spell = C.spells[G.troopSel] && b.spells[G.troopSel] > 0 ? C.spells[G.troopSel] : null;
+    setText('bhHint', b.ended ? '' : spell ? 'Tap anywhere to cast ' + spell.name + '. ' + spell.desc : scout ? 'Look around, pick a troop, then tap outside the red zone. Hold to deploy a stream of troops.'
+      : Bt.poolTotal(b) ? 'Destroy ' + U.pct(C.battle.winDestruction) + '% of the buildings or the Command Core to win.'
+        : Bt.spellsLeft(b) ? 'All troops deployed. Pick a spell and tap anywhere to cast it.' : 'All troops deployed.');
   }
 
   // One button per troop type brought, numbered like the 1-6 keys. Rebuilt only when that set
   // changes, so a focused button keeps focus while counts update.
   function updateTroops(b) {
     const box = $('bhTroops');
-    const list = C.deployOrder.filter(function (t) { return (b.meta.brought || {})[t] > 0; });
+    const list = G.tray(b);
     if (box.dataset.key !== list.join()) {
       box.dataset.key = list.join();
+      box.classList.toggle('dense', list.length > 12);
       box.innerHTML = list.map(function (t, i) {
-        return '<button class="tbtn" data-act="troop" data-type="' + t + '" data-tip="' + esc(C.troops[t].name) + ' <kbd>' + (i + 1) + '</kbd>">' +
-          '<kbd>' + (i + 1) + '</kbd><span class="lv"></span>' + troopImg(t, null, 56) + '<b></b></button>';
+        const P = C.spells[t];
+        return '<button class="tbtn' + (P ? ' spell' : '') + '" data-act="troop" data-type="' + t + '" data-tip="' + esc(P ? P.name + ': ' + P.desc : C.troops[t].name) + ' <kbd>' + (i + 1) + '</kbd>">' +
+          '<kbd>' + (i + 1) + '</kbd><span class="lv"></span>' + (P ? spellImg(t, 56) : troopImg(t, null, 56)) + '<b></b></button>';
       }).join('');
     }
     Array.prototype.forEach.call(box.children, function (el) {
-      const t = el.dataset.type, n = b.pool[t] || 0, lv = b.troopLv[t] || 1;
+      const t = el.dataset.type;
+      if (C.spells[t]) {
+        const n = b.spells[t] || 0, on = !b.ended && n > 0 && G.troopSel === t;
+        if (on && !el.classList.contains('on')) el.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+        setClass(el, 'tbtn spell' + (on ? ' on' : ''));
+        el.disabled = b.ended || !n;
+        setAttr(el, 'aria-pressed', String(on));
+        setAttr(el, 'aria-label', C.spells[t].name + ', ' + n + ' left, level ' + b.spellLv);
+        setTxt(el.querySelector('.lv'), 'Lv ' + b.spellLv);
+        setTxt(el.querySelector('b'), n);
+        return;
+      }
+      const n = b.pool[t] || 0, lv = b.troopLv[t] || 1;
       const on = !b.ended && n > 0 && G.troopSel === t;
+      if (on && !el.classList.contains('on')) el.scrollIntoView({ block: 'nearest', inline: 'nearest' });
       // a deployed hero's button becomes its ability button until the ability is spent
       const ab = C.heroes[t] && !n && CS.Battle.abilityReady(b, t);
       setClass(el, 'tbtn' + (on ? ' on' : '') + (C.heroes[t] ? ' hero' : '') + (ab ? ' ab' : ''));
@@ -1509,6 +1607,14 @@
     return '<table class="rs-troops"><tr><th></th><th><span class="lbl">Deployed</span></th><th><span class="lbl">Lost</span></th></tr>' + rows + '</table>';
   }
 
+  function spellSummary(res) {
+    const used = C.spellOrder.filter(function (t) { return res.cast && res.cast[t] > 0; });
+    if (!used.length) return '';
+    return '<h4>Spells cast</h4><div class="chips">' + used.map(function (t) {
+      return '<span class="chipT" data-tip="' + esc(C.spells[t].name) + '">' + spellImg(t, 40) + '<b>' + res.cast[t] + '</b></span>';
+    }).join('') + '</div>';
+  }
+
   function cell(label, value) { return '<div><span class="lbl">' + label + '</span><b>' + value + '</b></div>'; }
 
   MODALS.results = function (r) {
@@ -1526,10 +1632,11 @@
       cell('Command Core', res.coreDown ? 'Destroyed' : 'Standing') + cell('Battle time', U.fmtTime(res.seconds)) + '</div>' +
       '<div class="rs-cols"><section class="rs-box"><h4>Loot gained</h4><div class="rs-loot">' + loot + '</div>' +
       (r.bonus ? '<small>Includes a victory bonus of ' + U.fmt(r.bonus) + ' each.</small>' : '') +
+      (r.reward ? '<small class="good">Includes the boss reward of ' + U.fmt(r.reward.credits) + ' each.</small>' : '') +
       (r.wasted > 0 ? '<small class="bad">' + U.fmt(r.wasted) + ' could not be stored. Your storages are full.</small>' : '') +
       '<h4>Renown</h4><div class="rs-renown ' + (r.renown > 0 ? 'up' : r.renown < 0 ? 'down' : '') + '">' + ic('renown') +
       (r.renown ? (r.renown > 0 ? '+' : '') + r.renown : 'Unchanged') + '</div></section>' +
-      '<section class="rs-box"><h4>Troops</h4>' + troopSummary(res) + '<small>Survivors return to your army.</small></section></div>' + notes + tips + '</div>' +
+      '<section class="rs-box"><h4>Troops</h4>' + troopSummary(res) + '<small>Survivors return to your army.</small>' + spellSummary(res) + '</section></div>' + notes + tips + '</div>' +
       '<div class="rs-foot"><button class="mbtn primary" data-act="home">' + ic('home') + '<span>Return home</span></button></div>';
   };
 
@@ -1676,6 +1783,13 @@
     $('bottom').innerHTML = bottomHtml();
     $('battlehud').innerHTML = battleHudHtml();
     $('defhud').innerHTML = defHudHtml();
+    // the troop bar scrolls sideways under a mouse wheel when it holds more than fits
+    $('bhTroops').addEventListener('wheel', function (e) {
+      const el = e.currentTarget;
+      if (el.scrollWidth <= el.clientWidth || Math.abs(e.deltaX) > Math.abs(e.deltaY)) return;
+      el.scrollLeft += e.deltaY;
+      e.preventDefault();
+    }, { passive: false });
     document.addEventListener('click', function (e) {
       const el = e.target.closest('[data-act]');
       if (!el || el.disabled) return;
