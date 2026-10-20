@@ -123,6 +123,7 @@
    *  spread - buildings scattered with short walls shielding key defenses
    */
   // `tier` is a tier number or a tier-shaped spec ({core, area, walls, wallLv, b}), as base presets use.
+  const GUARD = { brazier: 1, tempest: 1 };
   NPC.generate = function (tier, fortify, seed, arch) {
     const T = typeof tier === 'object' ? tier : C.tiers[tier];
     if (typeof tier === 'object') tier = T.core;
@@ -248,6 +249,8 @@
       }
     });
     rng.shuffle(defs);
+    // short-reach guards (Cinder Brazier, Tempest Coil) go first so every style keeps them by the core
+    defs.sort(function (a, b) { return (GUARD[b.type] || 0) - (GUARD[a.type] || 0); });
     const coreLv = U.clamp(T.core + (fortify >= 2 ? 1 : 0), 1, Base.maxLevel('core'));
     const mid = SZ / 2;
     const core = put('core', coreLv, mid - 2 + rng.int(-1, 1), mid - 2 + rng.int(-1, 1), 0);
@@ -263,7 +266,7 @@
       inner.forEach(function (it) { placeNear(it, ccx + rng.range(-6, 6), ccy + rng.range(-6, 6), 1); });
       const phase = rng.range(0, 6.28);
       const placedDefs = defs.map(function (it, i) {
-        const p = ringPoint(i, defs.length, rng.range(4, T.area / 2 - 3), phase);
+        const p = ringPoint(i, defs.length, GUARD[it.type] ? rng.range(3.5, 5.5) : rng.range(4, T.area / 2 - 3), phase);
         return placeNear(it, p[0], p[1], 1);
       });
       wallRing({ x0: core.x - 1, y0: core.y - 1, x1: core.x + 4, y1: core.y + 4 });
@@ -281,7 +284,7 @@
       const rest = defs.slice(items.length - inner.length);
       const phase = rng.range(0, 6.28);
       items.forEach(function (it, i) {
-        const p = ringPoint(i, items.length, 4.5 + items.length * 0.25, phase);
+        const p = ringPoint(i, items.length, GUARD[it.type] ? 3.5 : 4.5 + items.length * 0.25, phase);
         cluster.push(placeNear(it, p[0], p[1], 0));
       });
       enclosure = bbox(cluster);
@@ -317,6 +320,7 @@
     } else { // ring
       const cluster = [core];
       inner.forEach(function (it) { cluster.push(placeNear(it, ccx, ccy, 0)); });
+      while (defs.length && GUARD[defs[0].type]) cluster.push(placeNear(defs.shift(), ccx, ccy, 0));
       if (tier >= 2 && defs.length) cluster.push(placeNear(defs.shift(), ccx, ccy, 0));
       enclosure = bbox(cluster);
       enclosure = { x0: enclosure.x0 - 1, y0: enclosure.y0 - 1, x1: enclosure.x1 + 1, y1: enclosure.y1 + 1 };
@@ -348,11 +352,21 @@
     }
 
     // Hidden traps go on open tiles near the defenses or the core.
+    // A Siege Charge waits just outside the main wall, where raiders gather to break in.
     traps.forEach(function (it) {
-      const anchor = defBuildings.length ? rng.pick(defBuildings) : core;
+      const near = defBuildings.length ? rng.pick(defBuildings) : core;
+      let anchor = near;
+      if (it.type === 'charge' && enclosure) {
+        const e = enclosure, side = rng.int(0, 3), t = rng.range(0.2, 0.8);
+        const x = side < 2 ? e.x0 + (e.x1 - e.x0) * t : side === 2 ? e.x0 - 3 : e.x1 + 2;
+        const y = side >= 2 ? e.y0 + (e.y1 - e.y0) * t : side === 0 ? e.y0 - 3 : e.y1 + 2;
+        anchor = { x: Math.round(x), y: Math.round(y), w: 0, h: 0 };
+      }
       const sz = Base.size(it.type, 0);
-      for (let tries = 0; tries < 40; tries++) {
-        const x = Math.round(anchor.x + anchor.w / 2 + rng.range(-4, 4)), y = Math.round(anchor.y + anchor.h / 2 + rng.range(-4, 4));
+      for (let tries = 0; tries < 80; tries++) {
+        if (tries === 40) anchor = near;   // no room by the wall: fall back to a defense
+        const j = anchor.w ? 4 : 1.5;
+        const x = Math.round(anchor.x + anchor.w / 2 + rng.range(-j, j)), y = Math.round(anchor.y + anchor.h / 2 + rng.range(-j, j));
         if (fits(x, y, sz[0], sz[1], 0)) { put(it.type, it.level, x, y, 0); break; }
       }
     });
