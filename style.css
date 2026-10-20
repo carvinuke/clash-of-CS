@@ -643,7 +643,8 @@ body:has(#threat.show) #panel { top: 154px; max-height: calc(100vh - 154px - 90p
 @media (max-width: 600px) { .presets { grid-template-columns: minmax(0, 1fr); } }
 
 /* ---- admin */
-input.code { width: 100%; min-height: 38px; margin: 10px 0 4px; padding: 0 10px; border: 1px solid var(--brass-line); border-radius: var(--r); background: var(--well); color: var(--cream); font: inherit; font-size: var(--fs-md); }
+select.code.pick { width: auto; margin: 0; }
+input.code, select.code { width: 100%; min-height: 38px; margin: 10px 0 4px; padding: 0 10px; border: 1px solid var(--brass-line); border-radius: var(--r); background: var(--well); color: var(--cream); font: inherit; font-size: var(--fs-md); }
 
 /* ---- controls and help */
 .help { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 0 28px; }

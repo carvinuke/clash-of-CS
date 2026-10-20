@@ -422,6 +422,12 @@ ok(s.res.credits <= CS.Eco.capacity(s).credits, 'turning infinite resources off 
 CS.Admin.maxBase(s);
 ok(s.base.buildings.every(b => b.level === CS.Base.maxLevel(b.type)), 'max out every building');
 ok(CS.Admin.fillArmy(s) > 0 && CS.Army.armySpace(s) <= CS.Army.capacity(s), 'fill army stays within housing');
+CS.Admin.shield(s, t);
+CS.Admin.unshield(s);
+ok(CS.Threat.eligibleFrom(s) < t + 3600000 && !s.threat.shieldUntil && !s.threat.protectionUntil, 'remove shield clears shield and protection');
+const fp = CS.Admin.raidPlan(s, 'mossy-hollow', t), rp = CS.Admin.raidPlan(s, '', t);
+ok(fp.attackerId === 'mossy-hollow' && rp && CS.CONFIG.settlements.some(x => x.id === rp.attackerId), 'forced raid plans a chosen or random settlement');
+ok(CS.CONFIG.bosses.every(b => CS.Admin.raidPlan(s, b.id, t) === null), 'bosses never raid');
 // Backup files
 const good = JSON.stringify({ v: CS.CONFIG.saveVersion, savedAt: t, state: CS.State.newGame(t) });
 let restored = JSON.parse(CS.State.readBackup(good, t + 5));

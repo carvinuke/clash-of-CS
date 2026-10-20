@@ -466,6 +466,13 @@
     if (act === 'maxBase') { CS.Admin.maxBase(st); G.refreshGround(); toast('Every building is now max level', 'good', 'up'); }
     else if (act === 'fillArmy') toast(CS.Admin.fillArmy(st) + ' troops added', 'good', 'army');
     else if (act === 'shield') { CS.Admin.shield(st, now()); toast('Shield active for 24 hours', 'good', 'shield'); }
+    else if (act === 'unshield') { CS.Admin.unshield(st); toast('Shield removed. Raiders can attack again.', 'bad', 'shield'); }
+    else if (act === 'raid') {
+      if (G.mode !== 'village' || G.battle) { toast('Finish the battle first', 'bad', 'warn'); return; }
+      const plan = CS.Admin.raidPlan(st, CS.UI.raidPick || '', now());
+      if (plan) G.startDefense(plan);      // starts straight away, ignoring any shield
+      return;
+    }
     G.save();
     refresh();
   };
