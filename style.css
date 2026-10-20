@@ -409,7 +409,8 @@ body:has(#threat.show) #panel { top: 154px; max-height: calc(100vh - 154px - 90p
  * bar and any raid warning, left of the rail, above the toolbar), so it never covers them.
  * Phones get full-screen sheets instead (see the end of this section). */
 #hud:not(.hidden) ~ #modal:not(.m-results) { padding: var(--m-top, 74px) var(--m-side, 86px) var(--m-bottom, 88px) var(--m-left, 16px); }
-#hud:has(#threat.show) ~ #modal, #defhud:not(.hidden) ~ #modal { --m-top: 142px; }
+#hud:has(#threat.show) ~ #modal { --m-top: 154px; }
+#defhud:not(.hidden) ~ #modal { --m-top: 142px; }
 .mbox:focus-visible { outline: none; }   /* the window itself takes focus on open; its controls show the ring */
 #modal.m-build .mbox, #modal.m-army .mbox { width: min(1000px, 100%); }
 #modal.m-research .mbox { width: min(820px, 100%); }
@@ -510,8 +511,8 @@ body:has(#threat.show) #panel { top: 154px; max-height: calc(100vh - 154px - 90p
 .r-art > .ic { width: 30px; height: 30px; }
 .r-head { display: flex; align-items: center; gap: 6px; }
 .r-name { font: 400 var(--fs-md)/1.15 var(--font-display); color: var(--cream); }
-.ractive { display: flex; align-items: center; gap: 12px; padding: 8px 12px 8px 8px; border-radius: var(--r); background: var(--well); border-left: 3px solid var(--brass); }
-.ractive.idle { padding: 10px 12px; border-left-color: var(--green); color: var(--cream-2); }
+.ractive { display: flex; align-items: center; gap: 12px; padding: 8px 12px 8px 8px; border-radius: var(--r); background: var(--well); box-shadow: inset 0 0 0 1px var(--brass-line); }
+.ractive.idle { padding: 10px 12px; box-shadow: inset 0 0 0 1px var(--sep); color: var(--cream-2); }
 .ractive.idle > .ic { width: 22px; height: 22px; }
 .ra-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
 .ra-main .bar { height: 6px; margin-top: 3px; }
@@ -556,7 +557,7 @@ body:has(#threat.show) #panel { top: 154px; max-height: calc(100vh - 154px - 90p
 .node.home { z-index: 0; flex-direction: row; gap: 5px; transform: translate(-17px, -19px); }
 .node.home .pin { width: 34px; height: 38px; }
 .node.home .nl { background: var(--blue-deep); border-color: #10284a; font-family: var(--font-ui); font-weight: 600; }
-.wdetail { display: flex; flex-direction: column; min-width: 0; min-height: 0; border-radius: var(--r); background: var(--ink-750); border: 1px solid var(--frame); border-top: 3px solid var(--fc); overflow: hidden; }
+.wdetail { display: flex; flex-direction: column; min-width: 0; min-height: 0; border-radius: var(--r); background: var(--ink-750); border: 1px solid var(--frame); overflow: hidden; }
 .wd-h { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-bottom: 1px solid var(--sep); }
 .wd-crest { flex: none; width: 42px; height: 46px; }
 .wd-crest svg { display: block; width: 100%; height: 100%; }
@@ -625,11 +626,10 @@ body:has(#threat.show) #panel { top: 154px; max-height: calc(100vh - 154px - 90p
 
 /* ---- confirm */
 .ctext { color: var(--cream-2); font-size: var(--fs-md); line-height: 1.5; }
-#modal.m-confirm:has(.danger) .mh { box-shadow: inset 0 3px 0 var(--red-deep); }
 
 /* ---- defense and away reports */
-.dreport { display: flex; flex-direction: column; gap: 10px; padding: 12px; border-radius: var(--r); background: var(--ink-750); border: 1px solid var(--frame); border-left: 3px solid var(--green); }
-.dreport.lost { border-left-color: var(--red); }
+.dreport { display: flex; flex-direction: column; gap: 10px; padding: 12px; border-radius: var(--r); background: var(--ink-750); border: 1px solid var(--frame); box-shadow: inset 0 0 0 1px rgba(134, 207, 87, 0.45); }
+.dreport.lost { box-shadow: inset 0 0 0 1px rgba(232, 85, 61, 0.6); }
 .dr-h { display: flex; align-items: center; gap: 10px; }
 .dr-crest { flex: none; width: 36px; height: 40px; }
 .dr-crest svg { display: block; width: 100%; height: 100%; }
@@ -779,7 +779,7 @@ body[data-mode="raid"] #coach { bottom: 118px; }
 
 /* ---- defense HUD: a compact strip under the village top bar while raiders attack */
 #defhud { position: fixed; top: 74px; left: 50%; z-index: 4; display: flex; align-items: stretch; width: max-content; max-width: calc(100vw - 172px); transform: translateX(-50%);
-  background: var(--ink-800); border: 1px solid var(--frame); border-left: 3px solid var(--red); border-radius: var(--r); box-shadow: var(--plaque); }
+  background: var(--ink-800); border: 1px solid var(--frame); border-radius: var(--r); box-shadow: inset 0 0 0 1px rgba(232, 85, 61, 0.6), var(--shadow); }
 #defhud > * { display: flex; align-items: center; }
 .dh-who { gap: 9px; min-width: 0; padding: 6px 14px 6px 9px; }
 .dh-crest { width: 34px; height: 34px; }
@@ -792,12 +792,15 @@ body[data-mode="raid"] #coach { bottom: 118px; }
 .dh-stat.bad b { color: #ff8b73; }
 .dh-act { gap: 5px; padding: 6px 7px 6px 9px; border-left: 1px solid var(--sep); }
 .dh-act .sbtn { min-height: 32px; padding: 0 10px; }
-body[data-mode="defense"] #toasts, body:has(#threat.show) #toasts { top: 142px; }
+body[data-mode="defense"] #toasts { top: 142px; }
+body:has(#threat.show) #toasts { top: 154px; }
+/* while a window is open, event cards rise from the bottom edge so they never cover its title */
+body:has(#modal:not(.hidden)) #toasts { top: auto; bottom: 20px; }
 @media (min-width: 901px) { body[data-mode="defense"] #panel { top: 140px; max-height: calc(100vh - 140px - 90px); } }
 
 /* ---- end-of-battle ribbon */
 .bh-over { position: fixed; top: 40%; left: 50%; z-index: 20; width: min(440px, calc(100vw - 32px)); display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 14px 18px 16px; transform: translate(-50%, -50%); text-align: center; pointer-events: none;
-  background: var(--ink-800); border: 1px solid var(--frame); border-top: 3px solid var(--brass); border-radius: var(--r); box-shadow: inset 0 0 0 1px var(--brass-line), 0 18px 50px rgba(8, 4, 0, 0.55); animation: ribbon 0.2s ease-out both; }
+  background: var(--ink-800); border: 1px solid var(--frame); border-radius: var(--r); box-shadow: inset 0 0 0 1px var(--brass-line), 0 18px 50px rgba(8, 4, 0, 0.55); animation: ribbon 0.2s ease-out both; }
 .bh-over.lose { border-top-color: var(--red); }
 .bh-over h2 { font: 400 var(--fs-2xl)/1.15 var(--font-display); color: var(--brass-hi); }
 .bh-over.lose h2 { color: #ff8b73; }
@@ -841,7 +844,7 @@ body[data-mode="defense"] #toasts, body:has(#threat.show) #toasts { top: 142px; 
 .rs-renown.down { color: #ff8b73; }
 .results .notice.warn { border-left-color: var(--amber); }
 .results .notice:last-child { margin-bottom: 0; }
-.rs-tips { margin-top: 10px; padding: 10px 12px; border-radius: var(--r); background: var(--ink-750); border-left: 3px solid var(--red); }
+.rs-tips { margin-top: 10px; padding: 10px 12px; border-radius: var(--r); background: var(--ink-750); box-shadow: inset 0 0 0 1px rgba(232, 85, 61, 0.45); }
 .rs-tips ul { margin: 0; padding-left: 18px; line-height: 1.45; }
 .rs-foot { display: flex; justify-content: flex-end; padding: 10px 16px 12px; border-top: 1px solid var(--sep); background: var(--ink-750); }
 @media (prefers-reduced-motion: reduce) { .rs-verdict .lit { animation: none; } }

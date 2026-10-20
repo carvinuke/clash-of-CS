@@ -946,6 +946,14 @@
     const key = aspect + ':' + tier;
     if (!maps[key]) maps[key] = drawMap(aspect, tier);
     host.appendChild(maps[key]);
+    // labels of settlements near the edge slide inward instead of being cut off
+    const box = host.parentNode.getBoundingClientRect();
+    host.parentNode.querySelectorAll('.nl').forEach(function (nl) {
+      const b = nl.getBoundingClientRect();
+      if (!b.width) return;
+      const dx = Math.max(0, box.left + 4 - b.left) - Math.max(0, b.right + 4 - box.right);
+      if (dx) nl.style.transform = 'translateX(' + Math.round(dx) + 'px)';
+    });
   }
 
   function kv(label, html, cls) {
@@ -1010,7 +1018,7 @@
     else if (chk.noArmy && open) action = '<button class="mbtn" data-act="army">' + ic('army') + '<span>Train troops first</span></button>';
     else if (chk.rebuilding) action = '<button class="mbtn" disabled>' + ic('hammer') + '<span>Rebuilding</span></button>';
     else action = '<button class="mbtn" disabled>' + ic(open ? 'sword' : 'lock') + '<span>' + (open ? esc(chk.reason) : 'Locked') + '</span></button>';
-    return '<div class="wdetail" style="--fc:' + fac.color + '"><div class="wd-h"><span class="wd-crest">' + CS.Icons.crest(s.faction, fac.color) + '</span>' +
+    return '<div class="wdetail"><div class="wd-h"><span class="wd-crest">' + CS.Icons.crest(s.faction, fac.color) + '</span>' +
       '<div class="wd-t"><span class="lbl">Tier ' + s.tier + '</span><h3>' + esc(s.name) + '</h3><small>' + esc(fac.name) + ' &middot; led by ' + esc(s.leader) + '</small></div></div>' +
       '<div class="wd-b">' + body + '</div><div class="wd-act">' + action +
       '<p class="hint">Win ' + C.world.unlockWins + ' raids in a tier to reveal the next one. Defeated settlements rebuild stronger and richer.</p></div></div>';
@@ -1115,7 +1123,7 @@
       '<div class="dr-t"><span class="lbl">' + (rep.defended ? 'Raid repelled' : 'Base raided') + (rep.raidKind === 'retaliation' ? ' &middot; revenge' : '') + '</span>' +
       '<b>' + esc(rep.attacker) + '</b><small>' + esc(rep.faction) + (rep.leader ? ' &middot; led by ' + esc(rep.leader) : '') + (compact ? ' &middot; ' + ago(rep.at) : '') + '</small></div>' +
       '<div class="dr-stars" data-tip="Stars the raiders earned">' + stars(rep.stars) + '</div></div>' +
-      '<div class="dr-grid"><div><span class="lbl">Damage</span><b>' + Math.round(rep.destruction * 100) + '%</b>' + staticBar(rep.destruction, 'dmg') + '</div>' +
+      '<div class="dr-grid"><div><span class="lbl">Damage</span><b>' + U.pct(rep.destruction) + '%</b>' + staticBar(rep.destruction, 'dmg') + '</div>' +
       '<div><span class="lbl">Raiders defeated</span><b>' + rep.killed + ' / ' + rep.raiders + '</b></div>' +
       '<div><span class="lbl">Stolen</span><b>' + (rep.stolen.credits + rep.stolen.energy ? costHtml(rep.stolen) : 'Nothing') + '</b></div>' +
       '<div><span class="lbl">Renown</span><b class="' + (rep.renown > 0 ? 'good' : rep.renown < 0 ? 'bad' : '') + '">' + (rep.renown > 0 ? '+' : '') + rep.renown + '</b></div></div>' +
@@ -1202,7 +1210,6 @@
   // Raid HUD: the target and its loot (top left), the clock (top centre), destruction with the
   // three victory conditions (top right), a hint, the troop bar (bottom left) and the battle
   // controls (bottom right). Every value is read from the live battle.
-  function pctOf(f) { return Math.floor(f * 100 + 1e-6); }   // rounded down, so 49.6% never reads as a win
   function sumOf(o) { let n = 0; Object.keys(o || {}).forEach(function (k) { n += o[k]; }); return n; }
   function setClass(el, c) { if (el.className !== c) el.className = c; }
   function setTxt(el, v) { v = String(v); if (el.textContent !== v) el.textContent = v; }
@@ -1219,7 +1226,7 @@
   }
 
   function battleHudHtml() {
-    const half = pctOf(C.battle.winDestruction);
+    const half = U.pct(C.battle.winDestruction);
     return '<div class="bh-top" data-inset="t">' +
       '<div class="bh-target plaque"><div class="bh-id"><span class="bh-crest" id="bhCrest"></span><div class="bh-idt"><b id="bhName"></b><small id="bhSub"></small><small class="bh-diff" id="bhDiff"></small></div></div>' +
       '<div class="bh-loot"><span class="lbl">Loot taken</span>' + lootRow('credits') + lootRow('energy') + '</div></div>' +
@@ -1234,7 +1241,7 @@
   }
 
   function defHudHtml() {
-    const half = pctOf(C.battle.winDestruction);
+    const half = U.pct(C.battle.winDestruction);
     return '<div class="dh-who" id="dhWho"><span class="dh-crest" id="dhCrest"></span><div class="dh-wt"><span class="lbl" id="dhKind"></span><b id="dhName"></b></div></div>' +
       '<div class="dh-stats"><div class="dh-stat"><b id="dhTime">0:00</b><small>left</small></div>' +
       '<div class="dh-stat" id="dhDmg" data-tip="The raiders win at ' + half + '% damage or by destroying your Command Core."><b>0%</b><small>damage</small></div>' +
@@ -1276,7 +1283,7 @@
     setText('bhNote', scout && !b.ended ? 'Deploy to start' : '');
     setClass($('bhClock'), 'bh-clock plaque' + (b.ended ? ' over' : scout ? ' scout' : tl <= 30 ? ' urgent' : ''));
     const f = Bt.destruction(b);
-    setText('bhPct', pctOf(f) + '%');
+    setText('bhPct', U.pct(f) + '%');
     [f >= C.battle.winDestruction, !!b.coreDown, f >= 1].forEach(function (met, i) {
       const li = $('bhGoal' + i);
       if (li.classList.contains('met') === met) return;
@@ -1290,7 +1297,7 @@
     setHtml(end, ic(dep ? 'flag' : 'home') + '<span>' + (dep ? 'End battle' : 'Return home') + '</span>');
     end.disabled = b.ended;
     setText('bhHint', b.ended ? '' : scout ? 'Look around, pick a troop, then tap outside the red zone. Hold to deploy a stream of troops.'
-      : Bt.poolTotal(b) ? 'Destroy ' + pctOf(C.battle.winDestruction) + '% of the buildings or the Command Core to win.' : 'All troops deployed.');
+      : Bt.poolTotal(b) ? 'Destroy ' + U.pct(C.battle.winDestruction) + '% of the buildings or the Command Core to win.' : 'All troops deployed.');
   }
 
   // One button per troop type brought, numbered like the 1-6 keys. Rebuilt only when that set
@@ -1329,7 +1336,7 @@
     setText('dhName', s.name);
     setText('dhTime', U.clockTime(Bt.timeLeft(b)));
     const dmg = $('dhDmg');
-    setTxt(dmg.firstElementChild, pctOf(f) + '%');
+    setTxt(dmg.firstElementChild, U.pct(f) + '%');
     setClass(dmg, 'dh-stat' + (f >= C.battle.winDestruction || b.coreDown ? ' bad' : ''));
     setText('dhLeft', b.units.length + b.ai.length);
     speedBtn($('dhSpeed'), 'sbtn bh-speed');
@@ -1354,7 +1361,7 @@
   UI.battleOver = function (b) {
     if (!b || !b.ended || b === ribbonFor) return;
     ribbonFor = b;
-    const res = CS.Battle.result(b), pct = pctOf(res.destruction);
+    const res = CS.Battle.result(b), pct = U.pct(res.destruction);
     const raid = b.kind === 'attack', win = raid ? res.victory : !res.victory;
     const title = raid ? (win ? 'Victory' : 'Defeat') : (win ? 'Raid repelled' : 'Base raided');
     const sub = raid ? (res.reason === 'wiped' ? RAID_END.wiped : pct + '% destroyed · ' + (RAID_END[res.reason] || 'Battle over'))
@@ -1392,7 +1399,7 @@
     return '<div class="mh"><span class="rs-crest">' + CS.Icons.crest(s.faction, fac.color) + '</span><div class="rs-ht"><h2>' + esc(s.name) + '</h2><small class="rs-tier">Tier ' + s.tier + ' · ' + esc(fac.name) + '</small></div></div>' +
       '<div class="mbody results"><div class="rs-verdict ' + (win ? 'win' : 'lose') + '"><h3>' + (win ? 'Victory' : 'Defeat') + '</h3>' + starRow(res.stars) +
       '<p>' + esc(RAID_END[res.reason] || '') + '</p></div>' +
-      '<div class="rs-stats">' + cell('Destroyed', pctOf(res.destruction) + '%') + cell('Buildings', res.destroyed + ' of ' + res.total) +
+      '<div class="rs-stats">' + cell('Destroyed', U.pct(res.destruction) + '%') + cell('Buildings', res.destroyed + ' of ' + res.total) +
       cell('Command Core', res.coreDown ? 'Destroyed' : 'Standing') + cell('Battle time', U.fmtTime(res.seconds)) + '</div>' +
       '<div class="rs-cols"><section class="rs-box"><h4>Loot gained</h4><div class="rs-loot">' + loot + '</div>' +
       (r.bonus ? '<small>Includes a victory bonus of ' + U.fmt(r.bonus) + ' each.</small>' : '') +
@@ -1420,7 +1427,6 @@
       if (!b.deployedAny) { G.endBattle(); return; }
       UI.confirm({ title: 'End the battle?', text: 'Your troops stop fighting and the result is counted now. Survivors come home.', yes: 'End battle', danger: true }, function () {
         G.endBattle();
-        if (b.ended && b.endReason === 'retreat') UI.battleOver(b);   // main.js skips the ribbon when the player ends a raid
       });
     },
     skipDefense: function () { G.skipDefense(); },

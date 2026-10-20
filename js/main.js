@@ -526,8 +526,8 @@
     const b = G.battle;
     if (!b || b.ended || G.mode !== 'raid') return;
     Bt.surrender(b);
+    // nothing was deployed: straight home; otherwise stepBattle shows the verdict, then the results
     if (b.endReason === 'cancel') finishBattle();
-    else G.ending = performance.now() + 300;
   };
 
   G.goHome = function () {
@@ -548,7 +548,7 @@
   // Short, specific advice after a failed raid.
   function explainLoss(res, b) {
     const tips = [];
-    const pct = Math.round(res.destruction * 100);
+    const pct = U.pct(res.destruction);
     if (res.reason === 'time') tips.push('Time ran out at ' + pct + '% destruction. Deploy sooner and from more than one side.');
     else if (res.reason === 'troops') tips.push('Every troop you deployed was defeated at ' + pct + '% destruction.');
     else if (res.reason === 'retreat') tips.push('You ended the battle at ' + pct + '% destruction. Half of the buildings must fall to win.');
@@ -591,7 +591,7 @@
     st.stats.lootEnergy += gained.energy;
     const notes = NPC.onRaidResult(st, s, res, t);
     CS.Log.add(st, res.victory ? 'victory' : 'defeat', (res.victory ? 'Victory at ' : 'Defeat at ') + s.name + ': ' +
-      Math.round(res.destruction * 100) + '% destroyed, ' + res.stars + (res.stars === 1 ? ' star, ' : ' stars, ') +
+      U.pct(res.destruction) + '% destroyed, ' + res.stars + (res.stars === 1 ? ' star, ' : ' stars, ') +
       U.fmt(gained.credits) + ' Credits and ' + U.fmt(gained.energy) + ' Energy looted.', t);
     G.result = {
       s: s, res: res, gained: gained, bonus: bonus, wasted: wasted, renown: renown, notes: notes,

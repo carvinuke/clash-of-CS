@@ -209,7 +209,7 @@
       raiders: sum(res.deployed), killed: sum(res.lost), top: top, renown: renown,
       reason: res.reason, at: now
     };
-    const pct = Math.round(res.destruction * 100);
+    const pct = U.pct(res.destruction);
     CS.Log.add(state, defended ? 'defense' : 'raid', defended
       ? 'You repelled a raid by ' + s.name + ' (' + pct + '% damage). ' + report.killed + ' raiders fell.'
       : s.name + ' raided your base: ' + pct + '% destroyed, ' + U.fmt(stolen.credits) + ' Credits and ' + U.fmt(stolen.energy) + ' Energy stolen.', now);
