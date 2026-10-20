@@ -1231,7 +1231,11 @@
         sw('instant', 'Instant everything', 'Construction, upgrades, training and research finish at once.') +
         sw('heroes', 'Tireless heroes', 'Heroes are ready again right after every battle.')) +
       group('One-time actions', '<div class="srow acts">' + btn('maxBase', 'up', 'Max out every building') + btn('fillArmy', 'army', 'Fill the army') +
-        btn('shield', 'shield', '24 hour shield') + '</div>') + '</div>';
+        btn('shield', 'shield', '24 hour shield') + btn('unshield', 'close', 'Remove shield') + '</div>') +
+      group('Force a raid', srow('Attacker', 'Raiders strike your base right now, even through a shield.',
+        '<span class="sbtns"><select class="code pick" data-pick="raid" aria-label="Attacker"><option value="">Random</option>' +
+        C.settlements.map(function (s) { return '<option value="' + s.id + '"' + (UI.raidPick === s.id ? ' selected' : '') + '>' + esc(s.name) + '</option>'; }).join('') +
+        '</select>' + btn('raid', 'sword', 'Attack me') + '</span>')) + '</div>';
   };
 
   const KEYS = [
@@ -1813,6 +1817,7 @@
     document.addEventListener('change', function (e) {
       if (e.target.dataset && e.target.dataset.range === 'volume') G.save();
       if (e.target.id === 'restoreFile') readRestore(e.target);
+      if (e.target.dataset && e.target.dataset.pick === 'raid') UI.raidPick = e.target.value;
     });
     document.addEventListener('keydown', function (e) {
       if (e.key === 'Enter' && e.target.id === 'adminCode') { e.preventDefault(); ACT.adminEnter(); }

@@ -62,5 +62,18 @@
     state.threat.next = null;
   };
 
+  // Drops the shield and the new-player protection, so raids can be planned again right away.
+  Admin.unshield = function (state) {
+    state.threat.shieldUntil = 0;
+    state.threat.protectionUntil = 0;
+    state.threat.next = null;
+  };
+
+  // A raid plan that launches now. id '' picks an attacker the way scheduled raids do. Bosses never raid.
+  Admin.raidPlan = function (state, id, now) {
+    const s = id ? C.settlements.find(function (x) { return x.id === id; }) : CS.Threat.pickAttacker(state);
+    return s ? { at: now, attackerId: s.id, kind: 'random', announced: true } : null;
+  };
+
   CS.Admin = Admin;
 })(window.CS = window.CS || {});

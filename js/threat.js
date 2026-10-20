@@ -16,6 +16,8 @@
     return Math.max(th.protectionUntil || 0, th.shieldUntil || 0, (th.lastRaidAt || 0) + C.attacks.minIntervalMin * 60000);
   };
 
+  T.pickAttacker = pickAttacker;
+
   function pickAttacker(state) {
     const maxTier = NPC.unlockedTier(state);
     const cands = C.settlements.filter(function (s) { return s.tier <= maxTier; });
