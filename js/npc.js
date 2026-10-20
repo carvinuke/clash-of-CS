@@ -380,6 +380,8 @@
   NPC.armyPower = function (state) {
     let p = 0;
     Object.keys(state.army.units).forEach(function (t) { p += unitPower(t, CS.Research.level(state, t), state.army.units[t] || 0); });
+    const t = CS.Clock.now();
+    C.heroOrder.forEach(function (h) { if (CS.Army.heroReady(state, h, t)) p += unitPower(h, CS.Army.heroLevel(state, h), 1); });
     return p;
   };
 
@@ -463,7 +465,7 @@
     const core = Base.coreLevel(state);
     let space = Math.round(C.attacks.armySpaceByCore[core - 1] * (0.85 + 0.3 * rng.next()) * (0.92 + fac.aggression * 0.12));
     if (!(state.stats.defended + state.stats.raided)) space = Math.round(space * 0.7);   // the first raid ever is a gentle introduction
-    const allowed = C.troopOrder.slice(0, Math.min(C.troopOrder.length, core + 1));
+    const allowed = C.troopOrder.filter(function (t) { return CS.Army.unlockLevel(t) <= core; });
     let pool = fac.troops.filter(function (t) { return allowed.indexOf(t) >= 0; });
     if (pool.indexOf('scout') < 0) pool = pool.concat(['scout']);
     if (allowed.indexOf('ranger') >= 0 && pool.indexOf('ranger') < 0) pool.push('ranger');

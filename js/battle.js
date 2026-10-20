@@ -93,7 +93,7 @@
       c.atk = {
         kind: A.kind, range: A.range, minRange: A.minRange || 0,
         period: Math.max(1, Math.round((A.period || 1) * TR)),
-        dmg: L.dmg * (o.defDmgMult || 1), splash: A.splash || 0, slow: L.slow || 0,
+        dmg: L.dmg * (o.defDmgMult || 1), splash: A.splash || 0, slow: L.slow || 0, ground: !!A.ground,
         speed: (A.projectileSpeed || 0) * TICK,
         flight: Math.round((A.flight || 0) * TR), delay: Math.round((A.delay || 0) * TR),
         rampPerSec: A.rampPerSec || 0, rampMax: A.rampMax || 1
@@ -175,7 +175,9 @@
     return b._rt.deploy[tileOf(x, y)] === 1;
   };
 
-  function spawnUnit(b, type, x, y) {
+  // summoned: brought in by a hero's ability; not part of the player's army, so never counted in
+  // deployed, lost or survived.
+  function spawnUnit(b, type, x, y, summoned) {
     const T = C.troops[type];
     const lv = U.clamp(b.troopLv[type] || 1, 1, T.hp.length);
     const i = lv - 1;
@@ -186,12 +188,16 @@
       range: T.range, speed: T.speed * TICK,
       cd: 0, tgt: 0, tgtU: 0, obs: 0, path: null, pi: 0, slowT: 0, slowF: 0,
       dead: false, face: 1, atkT: -999, hitT: -999, stuck: 0, repathAt: 0, born: b.tick,
-      ox: (rnd(b) - 0.5) * 0.36, oy: (rnd(b) - 0.5) * 0.36
+      ox: (rnd(b) - 0.5) * 0.36, oy: (rnd(b) - 0.5) * 0.36,
+      air: !!T.air, sum: summoned ? 1 : 0, chg: 0,
+      ab: 0, abT: 0, hideT: 0, buffT: 0       // hero ability used / aura ticks left / cloak ticks left / rally buff ticks left
     };
     b.units.push(u);
     b._rt.units.set(u.id, u);
-    b.deployed[type] = (b.deployed[type] || 0) + 1;
-    b.deployedAny = true;
+    if (!summoned) {
+      b.deployed[type] = (b.deployed[type] || 0) + 1;
+      b.deployedAny = true;
+    }
     ev(b, { t: 'deploy', x: x, y: y, k: type });
     return u;
   }
@@ -207,6 +213,42 @@
   };
 
   B.begin = function (b) { if (b.phase === 'scout') b.phase = 'fight'; };
+
+  // The deployed, living hero of this type, or null.
+  B.hero = function (b, type) {
+    for (let i = 0; i < b.units.length; i++) if (b.units[i].type === type && !b.units[i].dead && !b.units[i].sum) return b.units[i];
+    return null;
+  };
+
+  B.abilityReady = function (b, type) {
+    const u = B.hero(b, type);
+    return !!u && !u.ab && !b.ended;
+  };
+
+  // Fires a deployed hero's one ability for this battle.
+  B.ability = function (b, type) {
+    const u = B.hero(b, type), H = C.heroes[type];
+    if (!H || !u || u.ab || b.ended) return { ok: false };
+    const A = H.ability, i = U.clamp(u.lv, 1, A.sec.length) - 1;
+    u.ab = 1;
+    u.hp = Math.min(u.maxHp, u.hp + Math.round(u.maxHp * A.heal[i]));
+    if (A.kind === 'rally') {
+      u.abT = Math.round(A.sec[i] * TR);
+      for (let k = 0; k < A.summonN[i]; k++) {
+        const a = k / A.summonN[i] * Math.PI * 2 + rnd(b);
+        const x = U.clamp(u.x + Math.cos(a) * 0.8, 0.1, S - 0.1), y = U.clamp(u.y + Math.sin(a) * 0.8, 0.1, S - 0.1);
+        spawnUnit(b, A.summon, b._rt.occ[tileOf(x, y)] ? u.x : x, b._rt.occ[tileOf(x, y)] ? u.y : y, true);
+      }
+      ev(b, { t: 'ability', k: type, x: u.x, y: u.y, r: A.radius });
+    } else {
+      u.hideT = Math.round(A.sec[i] * TR);
+      ev(b, { t: 'ability', k: type, x: u.x, y: u.y, r: 1 });
+    }
+    return { ok: true };
+  };
+
+  // Cloaked heroes cannot be targeted; ground-only defenses ignore flying troops.
+  function canHit(A, u) { return !u.dead && !(u.hideT > 0) && !(A.ground && u.air); }   // "!(x > 0)": snapshots saved before heroes have no hideT
 
   B.surrender = function (b) { if (!b.ended) end(b, b.deployedAny ? 'retreat' : 'cancel'); };
 
@@ -264,8 +306,8 @@
       });
       if (second) points.push(second);
     }
-    const order = ['bruiser', 'demo', 'scout', 'mage', 'ranger', 'mender'];
-    const delays = { bruiser: 0, demo: 1.6, scout: 2.2, mage: 3.0, ranger: 3.4, mender: 3.8 };
+    const order = ['colossus', 'bruiser', 'lancer', 'demo', 'scout', 'gyro', 'mage', 'ranger', 'mender'];
+    const delays = { colossus: 0, bruiser: 0, lancer: 1.0, demo: 1.6, scout: 2.2, gyro: 2.6, mage: 3.0, ranger: 3.4, mender: 3.8 };
     let n = 0;
     order.forEach(function (type) {
       const cnt = army[type] || 0;
@@ -342,7 +384,7 @@
   function killUnit(b, u) {
     u.dead = true;
     u.hp = 0;
-    b.lost[u.type] = (b.lost[u.type] || 0) + 1;
+    if (!u.sum) b.lost[u.type] = (b.lost[u.type] || 0) + 1;
     b._rt.units.delete(u.id);
     b._rt.anyDead = true;
     ev(b, { t: 'death', x: u.x, y: u.y, k: u.type });
@@ -353,8 +395,10 @@
 
   function inReach(u, c) { return U.distToRect(u.x, u.y, c.x, c.y, c.w, c.h) <= u.range + 0.08; }
 
+  const RALLY = C.heroes.marshal.ability, CLOAK = C.heroes.huntress.ability;
+
   function moveToward(u, tx, ty) {
-    const sp = u.speed * (u.slowT > 0 ? 1 - u.slowF : 1);
+    const sp = u.speed * (u.slowT > 0 ? 1 - u.slowF : 1) * (u.buffT > 0 ? RALLY.speedMult : 1);
     const dx = tx - u.x, dy = ty - u.y;
     const d = Math.sqrt(dx * dx + dy * dy);
     if (d > 1e-6) u.face = dx - dy >= 0 ? 1 : -1;
@@ -425,6 +469,7 @@
   function acquire(b, u, T) {
     u.tgt = 0; u.path = null; u.obs = 0;
     if (T.target === 'wall') return acquireDemo(b, u, T);
+    if (T.air) u.path = [];
     let best = null, bestS = Infinity, pref = null, prefS = Infinity;
     b.buildings.forEach(function (c) {
       if (c.dead || c.wall || c.trap) return;
@@ -438,7 +483,7 @@
     const t = pref || best;
     if (!t) return null;
     u.tgt = t.id;
-    computePath(b, u, T, t);
+    if (!T.air) computePath(b, u, T, t);
     return t;
   }
 
@@ -493,9 +538,19 @@
     if (T.suicide) { demoBlast(b, u, T); return; }
     let dmg = u.dmg;
     if (T.bonusVsResource && c.res) dmg *= T.bonusVsResource;
+    if (u.buffT > 0) dmg *= RALLY.dmgMult;
+    if (u.hideT > 0) dmg *= CLOAK.dmgMult;
+    if (T.charge && u.chg !== c.id) { u.chg = c.id; dmg *= T.charge; ev(b, { t: 'charge', x: u.x, y: u.y }); }
     if (T.projectile) {
       b.proj.push({ id: b.nextId++, k: T.projectile, x: u.x, y: u.y, sx: u.x, sy: u.y, tx: 0, ty: 0, tgt: c.id, tb: 1, dmg: dmg, splash: T.splash || 0, spd: 10 * TICK, t: 0, dur: 0, src: 0 });
       ev(b, { t: 'shoot', x: u.x, y: u.y, k: T.projectile });
+    } else if (T.splash) {
+      // area strike centred on the point of contact: the gyro's bomb, the colossus's stomp
+      const hx = U.clamp(u.x, c.x, c.x + c.w), hy = U.clamp(u.y, c.y, c.y + c.h);
+      b.buildings.forEach(function (o) {
+        if (!o.dead && !o.trap && U.distToRect(hx, hy, o.x, o.y, o.w, o.h) <= T.splash) hurtBuilding(b, o, dmg);
+      });
+      ev(b, { t: 'boom', x: hx, y: hy, r: T.splash, k: u.type });
     } else {
       hurtBuilding(b, c, dmg);
       ev(b, { t: 'hit', x: U.clamp(u.x, c.x, c.x + c.w), y: U.clamp(u.y, c.y, c.y + c.h), k: u.type });
@@ -555,12 +610,35 @@
     }
   }
 
+  // The War Cry aura: while it lasts, every troop within its radius (the Marshal included) is rallied.
+  function rally(b, u) {
+    u.abT--;
+    const r2 = RALLY.radius * RALLY.radius;
+    b.units.forEach(function (o) {
+      if (o.dead) return;
+      const dx = o.x - u.x, dy = o.y - u.y;
+      if (dx * dx + dy * dy <= r2) o.buffT = Math.max(o.buffT, 2);
+    });
+  }
+
   function updateUnit(b, u) {
     u.px = u.x; u.py = u.y;
     if (u.cd > 0) u.cd--;
     if (u.slowT > 0 && --u.slowT === 0) u.slowF = 0;
+    if (u.buffT > 0) u.buffT--;
+    if (u.hideT > 0) u.hideT--;
+    if (u.abT > 0) rally(b, u);
     const T = C.troops[u.type];
     if (T.target === 'troop') { updateMender(b, u, T); return; }
+    if (T.air) {
+      // flyers ignore walls and paths: straight to the target, hovering over it while they bomb
+      let t = u.tgt ? bById(b, u.tgt) : null;
+      if (!t || t.dead) t = acquire(b, u, T);
+      if (!t) return;
+      if (inReach(u, t)) attack(b, u, T, t);
+      else moveToward(u, t.x + t.w / 2, t.y + t.h / 2);
+      return;
+    }
     if (u.obs) {
       const ob = bById(b, u.obs);
       if (!ob || ob.dead) u.obs = 0;
@@ -589,7 +667,7 @@
   function pickNearest(b, A, cx, cy) {
     let best = null, bd = Infinity;
     b.units.forEach(function (u) {
-      if (u.dead) return;
+      if (!canHit(A, u)) return;
       const d = U.dist(cx, cy, u.x, u.y);
       if (d <= A.range && d >= A.minRange && d < bd) { bd = d; best = u; }
     });
@@ -602,11 +680,11 @@
     const units = b.units;
     for (let i = 0; i < units.length; i++) {
       const u = units[i];
-      if (u.dead || !inDefRange(A, cx, cy, u)) continue;
+      if (!canHit(A, u) || !inDefRange(A, cx, cy, u)) continue;
       let n = 0;
       for (let j = 0; j < units.length; j++) {
         const o = units[j];
-        if (!o.dead && U.dist(u.x, u.y, o.x, o.y) <= A.splash) n++;
+        if (!o.dead && !o.air && U.dist(u.x, u.y, o.x, o.y) <= A.splash) n++;
       }
       const d = U.dist(cx, cy, u.x, u.y);
       if (n > bestN || (n === bestN && d < bestD)) { best = u; bestN = n; bestD = d; }
@@ -622,14 +700,14 @@
       if (d.armed) {
         for (let i = 0; i < b.units.length; i++) {
           const u = b.units[i];
-          if (!u.dead && u.type !== 'mender' && U.dist(cx, cy, u.x, u.y) <= A.range) {
+          if (!u.dead && !u.air && u.type !== 'mender' && U.dist(cx, cy, u.x, u.y) <= A.range) {
             d.armed = false; d.trig = b.tick; d.hidden = false;
             ev(b, { t: 'mineArm', id: d.id, x: cx, y: cy });
             break;
           }
         }
       } else if (b.tick - d.trig >= A.delay) {
-        b.units.forEach(function (u) { if (!u.dead && U.dist(cx, cy, u.x, u.y) <= A.splash) hurtUnit(b, u, A.dmg, d); });
+        b.units.forEach(function (u) { if (!u.dead && !u.air && U.dist(cx, cy, u.x, u.y) <= A.splash) hurtUnit(b, u, A.dmg, d); });
         d.spent = true;
         ev(b, { t: 'boom', x: cx, y: cy, r: A.splash, k: 'mine' });
       }
@@ -640,7 +718,7 @@
       if (d.cd > 0) return;
       let hit = 0;
       b.units.forEach(function (u) {
-        if (u.dead || U.dist(cx, cy, u.x, u.y) > A.range) return;
+        if (!canHit(A, u) || U.dist(cx, cy, u.x, u.y) > A.range) return;
         hurtUnit(b, u, A.dmg, d);
         u.slowT = A.period + 6;
         u.slowF = Math.max(u.slowF, A.slow);
@@ -652,7 +730,7 @@
       return;
     }
     let t = d.tgt ? b._rt.units.get(d.tgt) : null;
-    if (t && (t.dead || !inDefRange(A, cx, cy, t))) t = null;
+    if (t && (!canHit(A, t) || !inDefRange(A, cx, cy, t))) t = null;
     if (A.kind === 'mortar') {
       if (d.cd > 0) return;
       t = pickCluster(b, A, cx, cy);
@@ -693,7 +771,7 @@
         if (p.t >= p.dur) {
           keep = false;
           const src = bById(b, p.src);
-          b.units.forEach(function (u) { if (!u.dead && U.dist(p.tx, p.ty, u.x, u.y) <= p.splash) hurtUnit(b, u, p.dmg, src); });
+          b.units.forEach(function (u) { if (!u.dead && !u.air && U.dist(p.tx, p.ty, u.x, u.y) <= p.splash) hurtUnit(b, u, p.dmg, src); });
           ev(b, { t: 'boom', x: p.tx, y: p.ty, r: p.splash, k: 'shell' });
         }
       } else {
@@ -739,14 +817,14 @@
     const cells = b._rt.cells;
     cells.clear();
     units.forEach(function (u) {
-      if (u.dead || u.type === 'mender') return;
+      if (u.dead || u.type === 'mender' || u.air) return;
       const k = tileOf(u.x, u.y);
       const arr = cells.get(k);
       if (arr) arr.push(u); else cells.set(k, [u]);
     });
     const R = 0.38, R2 = R * R;
     units.forEach(function (u) {
-      if (u.dead || u.type === 'mender') return;
+      if (u.dead || u.type === 'mender' || u.air) return;
       const tx = Math.floor(u.x), ty = Math.floor(u.y);
       let px = 0, py = 0;
       for (let dy = -1; dy <= 1; dy++) {
@@ -833,15 +911,20 @@
   B.result = function (b) {
     const destr = B.destruction(b);
     const stars = (destr >= C.battle.winDestruction ? 1 : 0) + (b.coreDown ? 1 : 0) + (destr >= 1 ? 1 : 0);
-    const survived = {};
-    b.units.forEach(function (u) { if (!u.dead) survived[u.type] = (survived[u.type] || 0) + 1; });
+    const survived = {}, heroHp = {};
+    b.units.forEach(function (u) { if (!u.dead && !u.sum) survived[u.type] = (survived[u.type] || 0) + 1; });
+    // health each hero ended on (0 if it fell, 1 if it never left the tray)
+    C.heroOrder.forEach(function (h) {
+      if (b.pool[h] > 0) heroHp[h] = 1;
+      else if (b.deployed[h]) { const u = B.hero(b, h); heroHp[h] = u ? u.hp / u.maxHp : 0; }
+    });
     Object.keys(b.pool).forEach(function (k) { if (b.pool[k] > 0) survived[k] = (survived[k] || 0) + b.pool[k]; });
     return {
       destruction: destr, stars: stars, victory: destr >= C.battle.winDestruction || b.coreDown,
       coreDown: b.coreDown, loot: { credits: Math.floor(b.loot.credits), energy: Math.floor(b.loot.energy) },
       lost: Object.assign({}, b.lost), deployed: Object.assign({}, b.deployed), survived: survived,
       destroyed: b.destroyed, total: b.total, reason: b.endReason, seconds: b.tick / TR,
-      dmg: Object.assign({}, b.stats.dmg)
+      dmg: Object.assign({}, b.stats.dmg), heroHp: heroHp
     };
   };
 

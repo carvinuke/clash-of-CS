@@ -105,6 +105,54 @@ raid(CS.NPC.def('bramble-keep'), { scout: 20, ranger: 10, bruiser: 4 });
 raid(CS.NPC.def('ironroot-hold'), { bruiser: 6, demo: 6, ranger: 14, scout: 10 });
 raid(CS.NPC.def('cinderforge'), { bruiser: 12, demo: 10, mage: 10, ranger: 20, mender: 2 });
 
+raid(CS.NPC.def('glimmerfen'), { lancer: 8, gyro: 6, colossus: 1, ranger: 10 });
+
+// Flying troops: a Blaster Turret (ground only) never hurts a Gyrocopter; a Sentry Spire does.
+{
+  const mk = type => CS.Battle.create({ kind: 'attack', seed: 3, timeLimit: 60, troops: { gyro: 2 }, troopLevels: {},
+    buildings: [{ id: 1, type: 'core', level: 1, x: 20, y: 20, w: 4, h: 4 }, { id: 2, type, level: 3, x: 14, y: 21, w: 3, h: 3 }] });
+  for (const type of ['blaster', 'spire']) {
+    const b = mk(type);
+    CS.Battle.deploy(b, 'gyro', 8.5, 22); CS.Battle.deploy(b, 'gyro', 8.5, 23);
+    CS.Battle.runToEnd(b);
+    const res = CS.Battle.result(b);
+    if (type === 'blaster') ok(!res.dmg.blaster && !res.lost.gyro && res.destruction === 1, 'blaster cannot hit gyrocopters (destroyed ' + Math.round(res.destruction * 100) + '%)');
+    else ok(res.dmg.spire > 0, 'spire shoots gyrocopters (' + Math.round(res.dmg.spire) + ' dmg)');
+  }
+}
+
+// Heroes: status, abilities, summons that never join the army, and recovery after a raid.
+{
+  const h = CS.State.newGame(now);
+  ok(CS.Army.heroStatus(h, 'marshal', now).code === 'none', 'no hero without its hall');
+  const hall = CS.Base.newBuilding(h, 'hall', 12, 26, 0, 1, 'active');
+  ok(CS.Army.heroLevel(h, 'marshal') === 1 && CS.Army.heroReady(h, 'marshal', now), 'War Hall summons a level 1 Iron Marshal');
+  const def = CS.NPC.def('pebblebrook');
+  const b = CS.Battle.create({ kind: 'attack', seed: 11, buildings: CS.NPC.battleBuildings(h, def, now), troops: { scout: 4, marshal: 1, huntress: 1 }, troopLevels: { marshal: 1, huntress: 1 }, timeLimit: 150 });
+  ok(!CS.Battle.ability(b, 'marshal').ok, 'ability needs a deployed hero');
+  CS.Battle.deploy(b, 'marshal', 3.5, 3.5); CS.Battle.deploy(b, 'huntress', 3.5, 4.5);
+  for (let i = 0; i < 4; i++) CS.Battle.deploy(b, 'scout', 4.5 + i * 0.3, 3.5);
+  CS.Battle.fastForward(b, 240);
+  const u = CS.Battle.hero(b, 'marshal');
+  const before = b.units.length;
+  ok(CS.Battle.ability(b, 'marshal').ok && !CS.Battle.ability(b, 'marshal').ok, 'War Cry fires once');
+  ok(b.units.length === before + 2 && b.units.filter(x => x.sum).length === 2, 'War Cry calls in 2 Scouts');
+  ok(CS.Battle.ability(b, 'huntress').ok && CS.Battle.hero(b, 'huntress').hideT > 0, 'Smoke Veil cloaks the Huntress');
+  ok(u.abT > 0, 'rally aura running');
+  const snap = CS.Battle.restore(JSON.parse(JSON.stringify(CS.Battle.serialize(b))));
+  CS.Battle.runToEnd(b); CS.Battle.runToEnd(snap);
+  const res = CS.Battle.result(b);
+  ok(JSON.stringify(res) === JSON.stringify(CS.Battle.result(snap)), 'battle with abilities restores deterministically');
+  ok(res.deployed.scout === 4 && !(res.survived.scout > 4), 'summoned Scouts never count as deployed or survivors');
+  ok(res.heroHp.marshal >= 0 && res.heroHp.marshal <= 1 && 'huntress' in res.heroHp, 'hero health reported: ' + JSON.stringify(res.heroHp));
+  CS.Army.heroesRest(h, { marshal: 0.5 }, now);
+  const st = CS.Army.heroStatus(h, 'marshal', now);
+  ok(st.code === 'resting' && Math.abs(st.left - 150) < 1, 'half-health Marshal rests 2.5 of 5 minutes (' + st.left + 's)');
+  ok(CS.Army.heroReady(h, 'marshal', now + 151000), 'Marshal ready after resting');
+  hall.status = 'upgrading';
+  ok(CS.Army.heroStatus(h, 'marshal', now + 999999).code === 'upgrading', 'hero away while its hall upgrades');
+}
+
 // Serialization round trip mid-battle
 {
   const def = CS.NPC.def('pebblebrook');

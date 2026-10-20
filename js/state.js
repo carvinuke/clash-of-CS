@@ -33,6 +33,7 @@
       log: [],
       tutorial: { step: 0, done: false },
       settings: { sfx: true, music: true, volume: 0.7, raidMode: 'normal', showGrid: false },
+      heroes: {},
       battle: null
     };
   }
@@ -142,6 +143,13 @@
       return q && C.troops[q.type] && q.count > 0;
     }).map(function (q) { return { type: q.type, count: Math.round(num(q.count, 1, 1, 999)), unitCost: num(q.unitCost, 0, 0) }; });
     s.army.progress = num(s.army.progress, 0, 0);
+
+    // Heroes.
+    const heroes = {};
+    Object.keys(s.heroes || {}).forEach(function (h) {
+      if (C.heroes[h] && s.heroes[h]) heroes[h] = { readyAt: num(s.heroes[h].readyAt, 0, 0) };
+    });
+    s.heroes = heroes;
 
     // Research.
     const levels = {};
