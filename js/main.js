@@ -443,7 +443,7 @@
   G.firstTroop = function () {
     const b = G.battle;
     if (!b) return null;
-    for (let i = 0; i < C.troopOrder.length; i++) if (b.pool[C.troopOrder[i]] > 0) return C.troopOrder[i];
+    for (let i = 0; i < C.deployOrder.length; i++) if (b.pool[C.deployOrder[i]] > 0) return C.deployOrder[i];
     return null;
   };
 
@@ -453,7 +453,7 @@
     if (!NPC.isUnlocked(st, s)) return { ok: false, locked: true, reason: 'Win ' + C.world.unlockWins + ' raids against tier ' + (s.tier - 1) + ' settlements to reach it' };
     const rec = NPC.rec(st, id);
     if (rec.rebuildUntil > t) return { ok: false, rebuilding: rec.rebuildUntil, reason: s.name + ' is rebuilding after your last victory' };
-    if (Army.totalUnits(st) <= 0) return { ok: false, noArmy: true, reason: 'You have no troops. Train some in the Army menu first' };
+    if (Army.totalUnits(st) <= 0 && !C.heroOrder.some(function (h) { return Army.heroReady(st, h, t); })) return { ok: false, noArmy: true, reason: 'You have no troops. Train some in the Army menu first' };
     if (G.mode !== 'village') return { ok: false, reason: G.mode === 'defense' ? 'Defend your base first' : 'Finish the current battle first' };
     return { ok: true };
   };
@@ -467,6 +467,8 @@
     Object.keys(st.army.units).forEach(function (k) { if (st.army.units[k] > 0) brought[k] = st.army.units[k]; });
     const levels = {};
     C.troopOrder.forEach(function (k) { levels[k] = CS.Research.level(st, k); });
+    // rested heroes always come along; they return home after the battle whatever happens
+    C.heroOrder.forEach(function (h) { if (Army.heroReady(st, h, t)) { brought[h] = 1; levels[h] = Army.heroLevel(st, h); } });
     const diff = NPC.difficulty(st, s);
     G.battle = Bt.create({
       kind: 'attack', seed: (U.hash(id) ^ (t % 2147483647)) >>> 0, biome: NPC.faction(s).biome, name: s.name,
@@ -491,6 +493,7 @@
 
   G.selectTroop = function (type) {
     const b = G.battle;
+    if (b && C.heroes[type] && Bt.abilityReady(b, type)) { G.useAbility(type); return; }
     if (!b || !(b.pool[type] > 0)) return;
     G.troopSel = type;
     sfx('click');
@@ -512,6 +515,15 @@
     }
     if (!(b.pool[G.troopSel] > 0)) G.troopSel = G.firstTroop();
     CS.Bus.emit('raid:deploy', {});
+    CS.UI.refreshBattle();
+    return true;
+  };
+
+  // Tapping a deployed hero's button fires its ability (once per battle).
+  G.useAbility = function (type) {
+    const b = G.battle;
+    if (G.mode !== 'raid' || !b || !Bt.ability(b, type).ok) return false;
+    CS.Bus.emit('raid:ability', { type: type });
     CS.UI.refreshBattle();
     return true;
   };
@@ -574,8 +586,10 @@
     if (res.reason === 'cancel') { G.goHome(); return; }
     const brought = b.meta.brought || {};
     Object.keys(brought).forEach(function (k) {
+      if (C.heroes[k]) return;
       st.army.units[k] = Math.max(0, (st.army.units[k] || 0) - brought[k] + (res.survived[k] || 0));
     });
+    Army.heroesRest(st, res.heroHp, t);
     const T = C.tiers[s.tier];
     const bonus = res.victory ? Math.round(T.bonus * res.stars / 3) : 0;
     const want = { credits: res.loot.credits + bonus, energy: res.loot.energy + bonus };
@@ -590,6 +604,10 @@
     st.stats.lootCredits += gained.credits;
     st.stats.lootEnergy += gained.energy;
     const notes = NPC.onRaidResult(st, s, res, t);
+    Object.keys(res.heroHp).forEach(function (h) {
+      const hs = Army.heroStatus(st, h, t);
+      if (hs.code === 'resting') notes.push(C.troops[h].name + (res.heroHp[h] > 0 ? ' was wounded' : ' fell in battle') + ' and rests for ' + U.fmtTime(hs.left) + ' before the next raid.');
+    });
     CS.Log.add(st, res.victory ? 'victory' : 'defeat', (res.victory ? 'Victory at ' : 'Defeat at ') + s.name + ': ' +
       U.pct(res.destruction) + '% destroyed, ' + res.stars + (res.stars === 1 ? ' star, ' : ' stars, ') +
       U.fmt(gained.credits) + ' Credits and ' + U.fmt(gained.energy) + ' Energy looted.', t);
@@ -792,10 +810,14 @@
       else if (b.type === 'lab') info.busy = !!ra;
       else if (b.type === 'station') { info.idle = idle > 0 && !b.ruined; if (info.idle) idle--; }
       else if (b.type === 'barracks') info.active = info.active && st.army.queue.length > 0;
+      const hs = def.hero ? Army.heroStatus(st, def.hero, t) : null;
+      if (hs && hs.code === 'ready' && !bat) { info.hero = def.hero; info.heroLv = b.level; }
       if (b.ruined && !bat) o.bubble = 'repair';
       if (b.timer) {
         const total = b.timer.end - b.timer.start;
         o.timer = { frac: total > 0 ? U.clamp((t - b.timer.start) / total, 0, 1) : 1, text: U.fmtTime((b.timer.end - t) / 1000), icon: 'hammer' };
+      } else if (hs && hs.code === 'resting') {
+        o.timer = { frac: U.clamp(1 - hs.left / Army.heroRestSec(st, def.hero), 0, 1), text: U.fmtTime(hs.left), icon: 'clock' };
       } else if (b.type === 'lab' && ra) {
         o.timer = { frac: U.clamp((t - ra.start) / (ra.end - ra.start), 0, 1), text: U.fmtTime((ra.end - t) / 1000), icon: 'flask' };
       } else if (b.type === 'barracks' && st.army.queue.length && !trainShown && Base.isFunctional(b)) {
@@ -856,20 +878,32 @@
         id: u.id, type: u.type, team: team, x: u.px + (u.x - u.px) * a, y: u.py + (u.y - u.py) * a,
         face: u.face, idle: !moving, atk: since < 9 ? since / 9 : null, hit: b.tick - u.hitT < 3,
         lv: u.lv, skin: u.id % 4, hp: u.hp, maxHp: u.maxHp, enemy: b.kind === 'defense',
+        air: u.air, cloak: u.hideT > 0, buff: u.buffT > 0,
         targeted: !!threatened && threatened.has(u.id)
+      });
+    });
+    // heroes defending the home base
+    (b.guards || []).forEach(function (g) {
+      if (g.dead) return;
+      const since = b.tick - g.atkT;
+      scene.units.push({
+        id: g.id, type: g.type, team: TEAM, x: g.px + (g.x - g.px) * a, y: g.py + (g.y - g.py) * a,
+        face: g.face, idle: Math.abs(g.x - g.px) + Math.abs(g.y - g.py) <= 1e-4, atk: since < 9 ? since / 9 : null,
+        hit: b.tick - g.hitT < 3, lv: g.lv, skin: 0, hp: g.hp, maxHp: g.maxHp, enemy: false
       });
     });
     b.proj.forEach(function (p) {
       if (p.k === 'shell') { scene.projectiles.push({ k: 'shell', x: p.x, y: p.y, f: p.dur ? p.t / p.dur : 1 }); return; }
-      const tgt = p.tb ? Bt.building(b, p.tgt) : Bt.unit(b, p.tgt);
+      const bld = p.tb === 1;
+      const tgt = bld ? Bt.building(b, p.tgt) : p.tb === 2 ? Bt.guard(b, p.tgt) : Bt.unit(b, p.tgt);
       if (!tgt) return;
-      const tx = p.tb ? tgt.x + tgt.w / 2 : tgt.x, ty = p.tb ? tgt.y + tgt.h / 2 : tgt.y;
+      const tx = bld ? tgt.x + tgt.w / 2 : tgt.x, ty = bld ? tgt.y + tgt.h / 2 : tgt.y;
       const done = U.dist(p.sx, p.sy, p.x, p.y), left = U.dist(p.x, p.y, tx, ty);
       const shot = SHOT[p.k] || SHOT.arrow;
       if (done < shot.hide) return;          // still inside the weapon that fired it
       const total = done + left;
       const f = total > 0 ? done / total : 1;
-      const z0 = shot.z, z1 = p.tb ? (TOP[tgt.type] || 30) * 0.45 : 10;
+      const z0 = shot.z, z1 = bld ? (TOP[tgt.type] || 30) * 0.45 : 10;
       const d = left || 1;
       scene.projectiles.push({ k: p.k, x: p.x, y: p.y, z: z0 + (z1 - z0) * f, dx: (tx - p.x) / d * 0.5, dy: (ty - p.y) / d * 0.5, dz: total > 0 ? (z0 - z1) / total * 0.5 : 0 });
     });
@@ -947,7 +981,7 @@
         case 'dmg': {
           // damage to the player's side reads red; damage the player deals reads cream
           // numbers sit beside the target, not over its health bar: damage to the right, loot to the left
-          const mine = home ? e.b : !e.b;
+          const mine = e.own || (home ? e.b : !e.b);
           const z = e.b ? (TOP[e.k] || 30) * 0.45 + 6 : 30;
           if (e.b) R.damage('b' + e.id, e.x + 0.45, e.y - 0.15, z, e.n, mine ? HURT : HIT, '');
           else R.damage('u' + e.id, e.x + 0.2, e.y - 0.2, z, e.n, mine ? HURT : HIT, '');
@@ -992,6 +1026,15 @@
         case 'mineArm': R.emit('text', e.x, e.y, 20, { text: '!', col: '#ff5a4a', size: 18 }); sfx('mine'); break;
         case 'frost': R.pulse(e.id); sfx('frost'); break;
         case 'heal': R.emit('heal', e.x, e.y, 0, { r: e.r }); sfx('heal'); break;
+        case 'charge': R.emit('spark', e.x, e.y, 12, { col: '#ffe08a' }); break;
+        case 'ability': {
+          const A = C.heroes[e.k].ability;
+          if (A.kind === 'rally') { R.emit('shock', e.x, e.y, 0, { r: e.r, shake: 1 }); R.emit('heal', e.x, e.y, 0, { r: e.r }); }
+          else R.emit('poof', e.x, e.y);
+          R.emit('text', e.x, e.y, 46, { text: A.name, col: '#ffe9a6', size: 15, life: 1.4 });
+          sfx(A.kind === 'rally' ? 'horn' : 'frost');
+          break;
+        }
         case 'end': break;
       }
     });

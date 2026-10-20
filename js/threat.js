@@ -139,10 +139,17 @@
       });
     });
     const army = NPC.attackArmy(state, s.id, rng);
+    // rested heroes stand guard on their platforms
+    const guards = [];
+    C.heroOrder.forEach(function (h) {
+      if (!CS.Army.heroReady(state, h, now)) return;
+      const home = CS.Army.heroHome(state, h), sz = Base.size(home.type, home.rot);
+      guards.push({ type: h, lv: home.level, x: home.x + sz[0] / 2, y: home.y + sz[1] / 2 });
+    });
     const battle = CS.Battle.create({
       kind: 'defense', seed: seed, biome: 'home', name: s.name, attackerId: s.id,
       buildings: list, troops: {}, troopLevels: NPC.troopLevels(state),
-      timeLimit: C.battle.defenseSeconds, maxDestruction: C.attacks.maxDestruction,
+      timeLimit: C.battle.defenseSeconds, maxDestruction: C.attacks.maxDestruction, guards: guards,
       defHpMult: CS.Research.mult(state, 'plating'), defDmgMult: CS.Research.mult(state, 'targeting'),
       meta: { raidKind: plan.kind, army: army }
     });
@@ -200,6 +207,9 @@
     CS.Player.addRenown(state, renown);
     if (defended) state.stats.defended++; else state.stats.raided++;
     state.stats.stolen += stolen.credits + stolen.energy;
+    const heroHp = {};
+    res.guards.forEach(function (g) { heroHp[g.type] = g.hp; });
+    CS.Army.heroesRest(state, heroHp, now);
     let top = null;
     Object.keys(res.dmg).forEach(function (k) { if (!top || res.dmg[k] > top.dmg) top = { type: k, dmg: Math.round(res.dmg[k]) }; });
     const report = {
@@ -207,7 +217,7 @@
       raidKind: battle.meta.raidKind, defended: defended, stars: res.stars,
       destruction: res.destruction, stolen: stolen, destroyed: destroyed,
       raiders: sum(res.deployed), killed: sum(res.lost), top: top, renown: renown,
-      reason: res.reason, at: now
+      reason: res.reason, at: now, heroes: res.guards
     };
     const pct = U.pct(res.destruction);
     CS.Log.add(state, defended ? 'defense' : 'raid', defended

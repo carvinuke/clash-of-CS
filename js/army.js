@@ -56,7 +56,7 @@
     const T = C.troops[type];
     const i = U.clamp(level || A.level(state, type), 1, T.hp.length) - 1;
     return {
-      hp: T.hp[i], dmg: T.dmg[i], cost: T.cost[i], space: T.space, speed: T.speed, range: T.range,
+      hp: T.hp[i], dmg: T.dmg[i], cost: T.cost ? T.cost[i] : 0, space: T.space, speed: T.speed, range: T.range,
       period: T.period, dps: T.period ? T.dmg[i] / T.period : T.dmg[i]
     };
   };
@@ -132,6 +132,46 @@
     let total = -state.army.progress;
     state.army.queue.forEach(function (q) { total += A.trainSeconds(state, q.type) * q.count; });
     return Math.max(0, total / barracks);
+  };
+
+  // ---------------------------------------------------------------- heroes
+  // A hero exists once its building stands; its level is that building's level. state.heroes[h].readyAt
+  // is when it has recovered from its last battle (timestamp, so it heals while the game is closed).
+  A.heroHome = function (state, h) {
+    const type = C.heroes[h].building;
+    return state.base.buildings.find(function (b) { return b.type === type && b.level >= 1; }) || null;
+  };
+
+  A.heroLevel = function (state, h) {
+    const b = A.heroHome(state, h);
+    return b ? b.level : 0;
+  };
+
+  // {code: 'none'|'upgrading'|'ruined'|'resting'|'ready', left: seconds of rest remaining}
+  A.heroStatus = function (state, h, now) {
+    const b = A.heroHome(state, h);
+    if (!b) return { code: 'none', left: 0 };
+    if (b.ruined) return { code: 'ruined', left: 0 };
+    if (!Base.isFunctional(b)) return { code: 'upgrading', left: 0 };
+    const rec = state.heroes[h];
+    const left = rec ? (rec.readyAt - now) / 1000 : 0;
+    return left > 0 ? { code: 'resting', left: left } : { code: 'ready', left: 0 };
+  };
+
+  A.heroReady = function (state, h, now) { return A.heroStatus(state, h, now).code === 'ready'; };
+
+  A.heroRestSec = function (state, h) {
+    const lv = Math.max(1, A.heroLevel(state, h));
+    return C.heroes[h].recoverMin[lv - 1] * 60;
+  };
+
+  // hp: {hero: fraction of health left} for the heroes that took part in a battle.
+  A.heroesRest = function (state, hp, now) {
+    Object.keys(hp || {}).forEach(function (h) {
+      if (!C.heroes[h]) return;
+      const lost = U.clamp(1 - hp[h], 0, 1);
+      state.heroes[h] = { readyAt: lost > 0 ? now + lost * A.heroRestSec(state, h) * 1000 : 0 };
+    });
   };
 
   CS.Army = A;

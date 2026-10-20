@@ -310,6 +310,16 @@
       if (N) rows.push('<tr><td>Next level</td><td colspan="2" class="nx">Unlocks ' + N.unlock.map(function (t) { return C.troops[t].name; }).join(', ') + '</td></tr>');
     }
     if (b.type === 'station') row('Repairs', L.repair, N && N.repair, function (v) { return v + ' HP/s'; });
+    if (def.hero) {
+      const h = def.hero, T = C.troops[h], H = C.heroes[h], i = lv - 1, n = N ? lv : -1;
+      rows.push('<tr><td>Hero</td><td colspan="2">' + esc(T.name) + '</td></tr>');
+      row('Hero HP', T.hp[i], N && T.hp[n]);
+      row('Hero damage', T.dmg[i], N && T.dmg[n]);
+      row(esc(H.ability.name), H.ability.sec[i], N && H.ability.sec[n], function (v) { return v + 's'; });
+      row('Full recovery', H.recoverMin[i], N && H.recoverMin[n], function (v) { return v + ' min'; });
+      const hs = Army.heroStatus(st, h, CS.Clock.now());
+      rows.push('<tr><td>Status</td><td colspan="2">' + (hs.code === 'ready' ? 'Ready for battle' : hs.code === 'resting' ? 'Resting, ' + until(CS.Clock.now() + hs.left * 1000) : hs.code === 'upgrading' ? 'Away while upgrading' : 'In ruins') + '</td></tr>');
+    }
     if (def.attack) {
       const A = def.attack;
       const dm = CS.Research.mult(st, 'targeting');
@@ -318,6 +328,7 @@
       else row('Damage', L.dmg * dm, N && N.dmg * dm, function (v) { return Math.round(v) + (A.period ? ' every ' + A.period + 's' : ''); });
       if (L.slow) row('Slow', L.slow * 100, N && N.slow * 100, function (v) { return Math.round(v) + '%'; });
       rows.push('<tr><td>Range</td><td colspan="2">' + (A.minRange ? A.minRange + '&ndash;' : '') + A.range + ' tiles' + (A.splash ? ', splash ' + A.splash : '') + '</td></tr>');
+      rows.push('<tr><td>Targets</td><td colspan="2">' + (A.ground ? 'Ground only' : 'Ground and air') + '</td></tr>');
     }
     if (b.type === 'lab') rows.push('<tr><td>Research cap</td><td colspan="2">Upgrades up to Lv ' + (lv + 1) + '</td></tr>');
     return '<table class="stats">' + rows.join('') + '</table>';
@@ -589,7 +600,7 @@
     const s = Army.stats(st, type);
     const unlocked = Army.isUnlocked(st, type);
     const heals = T.target === 'troop';
-    const tip = esc(T.desc) + '<br>HP ' + s.hp + ' &middot; ' + (heals ? 'Heals ' + s.dmg + '/s' : 'DMG ' + s.dmg + (T.suicide ? ' (x' + T.wallMult + ' vs walls)' : '')) + ' &middot; Range ' + T.range + ' &middot; Speed ' + T.speed;
+    const tip = esc(T.desc) + '<br>HP ' + s.hp + ' &middot; ' + (heals ? 'Heals ' + s.dmg + '/s' : 'DMG ' + s.dmg + (T.suicide ? ' (x' + T.wallMult + ' vs walls)' : '')) + ' &middot; Range ' + T.range + ' &middot; Speed ' + T.speed + (T.air ? ' &middot; Flying' : '');
     let act;
     if (!unlocked) act = why('Unlocks at Barracks Lv ' + Army.unlockLevel(type), 'lock', 'lock');
     else {
@@ -606,6 +617,25 @@
       '<div class="tk-meta">' + costHtml({ energy: s.cost }, unlocked ? st : null) + '<span class="space">' + ic('army') + T.space + '</span><span class="time">' + ic('clock') + U.fmtTime(Army.trainSeconds(st, type)) + '</span></div>' +
       '<div class="tk-stats"><span>HP <b>' + s.hp + '</b></span><span>' + (heals ? 'Heal' : 'DMG') + ' <b>' + s.dmg + '</b></span><span>' + (T.range < 1 ? 'Melee' : 'Range <b>' + T.range + '</b>') + '</span></div>' +
       act + '</div></div>';
+  }
+
+  // Heroes are not trained: the card says where the hero is and when it can fight next.
+  function heroCard(st, h) {
+    const T = C.troops[h], A = C.heroes[h].ability, home = C.buildings[C.heroes[h].building];
+    const lv = Army.heroLevel(st, h), hs = Army.heroStatus(st, h, CS.Clock.now());
+    const s = Army.stats(st, h, Math.max(1, lv));
+    let status;
+    if (hs.code === 'none') status = why('Build the ' + home.name + ' (Command Core Lv ' + Base.unlockCore(C.heroes[h].building) + ') to summon this hero', 'lock', 'lock');
+    else if (hs.code === 'ruined') status = why('The ' + home.name + ' is in ruins. Repair it first.', 'busy', 'wrench');
+    else if (hs.code === 'upgrading') status = why('Away while the ' + home.name + ' is upgrading', 'busy', 'hammer');
+    else if (hs.code === 'resting') status = '<span class="tk-meta"><span class="time">' + ic('clock') + 'Resting, ready in&nbsp;<b>' + until(CS.Clock.now() + hs.left * 1000) + '</b></span></span>';
+    else status = '<span class="why hero-ok">' + ic('check') + '<span>Ready. Joins every raid and guards your base.</span></span>';
+    return '<div class="tcard' + (lv ? '' : ' locked') + '" data-tip="' + esc(T.desc) + '">' +
+      '<span class="tk-art">' + troopImg(h, null, 72) + '</span>' +
+      '<div class="tk-main"><div class="tk-head"><b class="tk-name">' + esc(T.name) + '</b>' + (lv ? '<span class="lv">Lv ' + lv + '</span>' : '') + '</div>' +
+      '<div class="tk-stats"><span>HP <b>' + s.hp + '</b></span><span>DMG <b>' + s.dmg + '</b></span><span>' + (T.range < 1 ? 'Melee' : 'Range <b>' + T.range + '</b>') + '</span></div>' +
+      '<div class="tk-stats"><span><b>' + esc(A.name) + ':</b> ' + esc(A.desc) + '</span></div>' +
+      status + '</div></div>';
   }
 
   MODALS.army = function () {
@@ -637,6 +667,7 @@
     }
     return head('Army', 'army') + '<div class="mbody">' + summary +
       '<h4>Train troops</h4><div class="tcards">' + C.troopOrder.map(function (t) { return troopCard(st, t); }).join('') + '</div>' +
+      '<h4>Heroes</h4><div class="tcards">' + C.heroOrder.map(function (h) { return heroCard(st, h); }).join('') + '</div>' +
       '<div class="acols"><section><div class="h4row"><h4>Your army</h4><span class="h4side"><b>' + Army.totalUnits(st) + '</b> troops</span></div>' +
       (chips ? '<div class="chips">' + chips + '</div>' : '<p class="hint">No troops yet. Train some to raid enemy settlements.</p>') + '</section>' +
       '<section><div class="h4row"><h4>Training</h4>' + total + '</div>' + queue + '</section></div></div>';
@@ -1127,7 +1158,11 @@
       '<div><span class="lbl">Raiders defeated</span><b>' + rep.killed + ' / ' + rep.raiders + '</b></div>' +
       '<div><span class="lbl">Stolen</span><b>' + (rep.stolen.credits + rep.stolen.energy ? costHtml(rep.stolen) : 'Nothing') + '</b></div>' +
       '<div><span class="lbl">Renown</span><b class="' + (rep.renown > 0 ? 'good' : rep.renown < 0 ? 'bad' : '') + '">' + (rep.renown > 0 ? '+' : '') + rep.renown + '</b></div></div>' +
-      (lost ? '<div class="dr-line"><span class="lbl">Destroyed</span><span>' + lost + '</span></div>' : '') + top + '</div>';
+      (lost ? '<div class="dr-line"><span class="lbl">Destroyed</span><span>' + lost + '</span></div>' : '') + top +
+      (rep.heroes || []).map(function (g) {
+        return '<div class="dr-line"><span class="lbl">Hero</span><span class="dr-top">' + troopImg(g.type, null, 40) + esc(C.troops[g.type].name) +
+          '<small>' + U.fmt(g.dealt) + ' damage &middot; ' + (g.hp <= 0 ? 'fell, now resting' : g.hp < 1 ? 'wounded, now resting' : 'unhurt') + '</small></span></div>';
+      }).join('') + '</div>';
   }
 
   MODALS.defense = function (rep) {
@@ -1304,7 +1339,7 @@
   // changes, so a focused button keeps focus while counts update.
   function updateTroops(b) {
     const box = $('bhTroops');
-    const list = C.troopOrder.filter(function (t) { return (b.meta.brought || {})[t] > 0; });
+    const list = C.deployOrder.filter(function (t) { return (b.meta.brought || {})[t] > 0; });
     if (box.dataset.key !== list.join()) {
       box.dataset.key = list.join();
       box.innerHTML = list.map(function (t, i) {
@@ -1315,12 +1350,14 @@
     Array.prototype.forEach.call(box.children, function (el) {
       const t = el.dataset.type, n = b.pool[t] || 0, lv = b.troopLv[t] || 1;
       const on = !b.ended && n > 0 && G.troopSel === t;
-      setClass(el, 'tbtn' + (on ? ' on' : ''));
-      el.disabled = b.ended || !n;
+      // a deployed hero's button becomes its ability button until the ability is spent
+      const ab = C.heroes[t] && !n && CS.Battle.abilityReady(b, t);
+      setClass(el, 'tbtn' + (on ? ' on' : '') + (C.heroes[t] ? ' hero' : '') + (ab ? ' ab' : ''));
+      el.disabled = b.ended || (!n && !ab);
       setAttr(el, 'aria-pressed', String(on));
-      setAttr(el, 'aria-label', C.troops[t].name + ', ' + n + ' left, level ' + lv);
+      setAttr(el, 'aria-label', C.troops[t].name + (ab ? ': use ' + C.heroes[t].ability.name : ', ' + n + ' left') + ', level ' + lv);
       setTxt(el.querySelector('.lv'), 'Lv ' + lv);
-      setTxt(el.querySelector('b'), n);
+      setTxt(el.querySelector('b'), ab ? C.heroes[t].ability.name : n);
     });
     setText('bhCount', CS.Battle.poolTotal(b));
   }
@@ -1379,7 +1416,7 @@
 
   // ----- raid results
   function troopSummary(res) {
-    const rows = C.troopOrder.filter(function (t) { return res.deployed[t] > 0; }).map(function (t) {
+    const rows = C.deployOrder.filter(function (t) { return res.deployed[t] > 0; }).map(function (t) {
       const lost = res.lost[t] || 0;
       return '<tr><td>' + troopImg(t, null, 40) + esc(C.troops[t].name) + '</td><td>' + res.deployed[t] + '</td><td' + (lost ? ' class="bad"' : '') + '>' + lost + '</td></tr>';
     }).join('');

@@ -873,7 +873,14 @@
       ctx.strokeStyle = 'rgba(255,96,70,0.85)'; ctx.lineWidth = 1.3; ctx.stroke();
       ctx.setLineDash([]);
     }
+    if (u.buff) {
+      // rallied by the War Cry: a brass ring under the feet
+      ctx.beginPath(); ctx.ellipse(s[0], s[1], 8.5 * k, 4.2 * k, 0, 0, Math.PI * 2);
+      ctx.strokeStyle = 'rgba(255,214,120,' + (0.55 + Math.sin(time * 10) * 0.25) + ')'; ctx.lineWidth = 1.6; ctx.stroke();
+    }
+    if (u.cloak) ctx.globalAlpha = 0.35;   // Smoke Veil: defenses cannot see her
     Spr.drawTroop(ctx, s[0], s[1], k, u.type, u.team, time + u.id * 0.37, u);
+    ctx.globalAlpha = 1;
   }
 
   function drawProjectile(ctx, p, time) {
@@ -985,6 +992,9 @@
     if (im) ctx.drawImage(im, x - 8.5, by - r - 8.5, 17, 17);
   }
 
+  // Health bar height above a troop's feet, in px at zoom 1 (flyers and big troops sit higher).
+  const BAR_Y = { bruiser: 40, mender: 42, gyro: 46, lancer: 40, colossus: 56, marshal: 44, huntress: 36 };
+
   function drawOverlays(ctx, scene, time) {
     const z = R.cam.zoom;
     scene.buildings.forEach(function (b) {
@@ -1004,7 +1014,7 @@
         if (u.hp >= u.maxHp) return;
         const k = Math.max(z, 0.8) * 1.1;
         const s = R.toScreen(u.x, u.y);
-        const hy = (u.type === 'bruiser' ? 40 : u.type === 'mender' ? 42 : 33) * k;
+        const hy = (BAR_Y[u.type] || 33) * k;
         bar(ctx, s[0], s[1] - hy, 14, 2, u.hp / u.maxHp, u.enemy ? '#ff7a5c' : '#7fd0ff');
       });
     }
@@ -1101,7 +1111,7 @@
     const list = [];
     scene.buildings.forEach(function (b) { list.push({ d: b.x + b.w / 2 + b.y + b.h / 2, b: b }); });
     if (scene.ghost) { const g = scene.ghost; list.push({ d: g.x + g.w / 2 + g.y + g.h / 2 + 0.01, b: g }); }
-    (scene.units || []).forEach(function (u) { list.push({ d: u.x + u.y + (u.type === 'mender' ? 0.6 : 0), u: u }); });
+    (scene.units || []).forEach(function (u) { list.push({ d: u.x + u.y + (u.type === 'mender' || u.air ? 0.6 : 0), u: u }); });
     list.sort(function (a, b) { return a.d - b.d; });
     for (let i = 0; i < list.length; i++) {
       const it = list[i];

@@ -119,11 +119,11 @@
         desc: 'Trains troops. Each level unlocks a new unit type, and every Barracks you own speeds up training.',
         max: [1, 1, 2, 2, 3, 3],
         levels: levels({
-          hp:     [500, 580, 670, 770, 880],
-          unlock: [['scout', 'ranger'], ['bruiser'], ['demo'], ['mage'], ['mender']],
-          cost:   [200, 1000, 4000, 12000, 30000],
-          time:   [10, 60, 180, 480, 1200],
-          core:   [1, 1, 2, 3, 4]
+          hp:     [500, 580, 670, 770, 880, 1000],
+          unlock: [['scout', 'ranger'], ['bruiser', 'lancer'], ['demo'], ['mage', 'gyro'], ['mender'], ['colossus']],
+          cost:   [200, 1000, 4000, 12000, 30000, 60000],
+          time:   [10, 60, 180, 480, 1200, 2400],
+          core:   [1, 1, 2, 3, 4, 5]
         })
       },
       garrison: {
@@ -149,6 +149,28 @@
           core: [2, 3, 4, 5, 6]
         })
       },
+      hall: {
+        name: 'War Hall', category: 'army', size: [3, 3], res: 'energy', hero: 'marshal',
+        desc: 'Seat of the Iron Marshal. Upgrading the hall raises his level; he cannot fight while it is upgrading.',
+        max: [0, 1, 1, 1, 1, 1],
+        levels: levels({
+          hp:   [700, 800, 920, 1050, 1200],
+          cost: [3000, 9000, 20000, 45000, 85000],
+          time: [120, 480, 1200, 2400, 3600],
+          core: [2, 3, 4, 5, 6]
+        })
+      },
+      lodge: {
+        name: 'Huntress Lodge', category: 'army', size: [3, 3], res: 'energy', hero: 'huntress',
+        desc: 'Home of the Storm Huntress. Upgrading the lodge raises her level; she cannot fight while it is upgrading.',
+        max: [0, 0, 1, 1, 1, 1],
+        levels: levels({
+          hp:   [600, 690, 790, 900, 1020],
+          cost: [6000, 15000, 30000, 55000, 95000],
+          time: [240, 720, 1500, 2700, 3600],
+          core: [3, 4, 5, 6, 6]
+        })
+      },
       station: {
         name: 'Engineering Station', category: 'army', size: [2, 2], res: 'credits',
         desc: 'Home of one Engineer. Each Engineer runs one construction at a time and all stations repair damaged buildings.',
@@ -164,9 +186,9 @@
       },
       blaster: {
         name: 'Blaster Turret', category: 'defense', size: [3, 3], res: 'credits',
-        desc: 'Reliable cannon that locks onto the nearest ground target and keeps firing until it falls.',
+        desc: 'Reliable cannon that locks onto the nearest ground target and keeps firing until it falls. Cannot hit flying troops.',
         max: [2, 2, 3, 3, 4, 5],
-        attack: { kind: 'blaster', range: 7, period: 0.8, targeting: 'nearest', projectileSpeed: 14 },
+        attack: { kind: 'blaster', ground: true, range: 7, period: 0.8, targeting: 'nearest', projectileSpeed: 14 },
         levels: levels({
           hp:   [420, 500, 600, 720, 860, 1000, 1150],
           dmg:  [8, 10, 13, 17, 22, 28, 35],
@@ -177,7 +199,7 @@
       },
       spire: {
         name: 'Sentry Spire', category: 'defense', size: [3, 3], res: 'credits',
-        desc: 'Tall watchtower with a rapid repeating crossbow. Long reach, light bolts.',
+        desc: 'Tall watchtower with a rapid repeating crossbow. Long reach, light bolts, and it shoots down flying troops.',
         max: [0, 1, 2, 3, 3, 4],
         attack: { kind: 'spire', range: 8.5, period: 0.5, targeting: 'nearest', projectileSpeed: 18 },
         levels: levels({
@@ -190,9 +212,9 @@
       },
       mortar: {
         name: 'Quake Mortar', category: 'defense', size: [3, 3], res: 'credits',
-        desc: 'Lobs heavy shells at the densest group of attackers. Huge splash, slow reload, blind up close.',
+        desc: 'Lobs heavy shells at the densest group of attackers. Huge splash, slow reload, blind up close and to flying troops.',
         max: [0, 0, 1, 2, 2, 3],
-        attack: { kind: 'mortar', range: 10, minRange: 3.5, period: 4, targeting: 'cluster', splash: 1.5, flight: 1.3 },
+        attack: { kind: 'mortar', ground: true, range: 10, minRange: 3.5, period: 4, targeting: 'cluster', splash: 1.5, flight: 1.3 },
         levels: levels({
           hp:   [500, 600, 720, 860, 1000, 1180],
           dmg:  [35, 48, 62, 80, 100, 125],
@@ -232,7 +254,7 @@
         name: 'Shock Mine', category: 'trap', size: [1, 1], res: 'credits', hidden: true, instant: true,
         desc: 'Hidden charge that detonates under attackers. Re-arms automatically after each battle.',
         max: [0, 2, 3, 4, 5, 6],
-        attack: { kind: 'mine', range: 1.0, splash: 1.6, delay: 0.35 },
+        attack: { kind: 'mine', ground: true, range: 1.0, splash: 1.6, delay: 0.35 },
         levels: levels({
           hp:   [1, 1, 1],
           dmg:  [70, 100, 140],
@@ -256,7 +278,7 @@
 
     buildMenu: [
       { id: 'economy', name: 'Economy', items: ['mint', 'well', 'vault', 'tank'] },
-      { id: 'army', name: 'Army', items: ['barracks', 'garrison', 'lab', 'station'] },
+      { id: 'army', name: 'Army', items: ['barracks', 'garrison', 'lab', 'station', 'hall', 'lodge'] },
       { id: 'defense', name: 'Defense', items: ['blaster', 'spire', 'mortar', 'frost', 'lance'] },
       { id: 'walls', name: 'Walls & Traps', items: ['wall', 'mine'] }
     ],
@@ -298,9 +320,63 @@
         healRadius: 1.8,
         desc: 'Field medic drone. Follows the most wounded troops and heals everyone nearby.',
         hp: [280, 320, 370, 425, 490], dmg: [28, 33, 38, 44, 50], cost: [600, 700, 800, 900, 1000]
+      },
+      lancer: {
+        name: 'Lancer', space: 3, speed: 2.0, range: 0.7, period: 1.2, target: 'any', time: 12,
+        charge: 3,
+        desc: 'Mounted spear rider. The first strike against each new target lands three times as hard.',
+        hp: [160, 184, 212, 244, 280], dmg: [22, 25, 29, 33, 38], cost: [90, 105, 120, 135, 150]
+      },
+      gyro: {
+        name: 'Gyrocopter', space: 5, speed: 1.6, range: 0.9, period: 2.2, target: 'any', time: 24,
+        air: true, splash: 0.8,
+        desc: 'Rotor craft that flies over walls and drops bombs. Blaster Turrets, Quake Mortars and Shock Mines cannot touch it.',
+        hp: [160, 184, 212, 244, 280], dmg: [36, 41, 47, 54, 62], cost: [380, 440, 500, 560, 620]
+      },
+      colossus: {
+        name: 'Colossus', space: 18, speed: 0.75, range: 0.9, period: 2.4, target: 'defense', time: 90,
+        splash: 1.2,
+        desc: 'A walking siege engine with an enormous health pool. Marches on defenses and its stomp crushes everything around the target, walls included.',
+        hp: [2400, 2700, 3050, 3450, 3900], dmg: [60, 68, 77, 87, 98], cost: [1800, 2000, 2200, 2400, 2600]
+      },
+      // Heroes: one of each, never trained. Their level is the level of their building
+      // (War Hall, Huntress Lodge), so the arrays below have one entry per building level.
+      marshal: {
+        name: 'Iron Marshal', hero: true, space: 0, speed: 1.5, range: 0.8, period: 1.2, target: 'any',
+        desc: 'Armoured commander with a war hammer. Fights whatever is closest and leads from the front.',
+        hp: [900, 1100, 1350, 1650, 2000], dmg: [45, 55, 68, 82, 100]
+      },
+      huntress: {
+        name: 'Storm Huntress', hero: true, space: 0, speed: 1.7, range: 4.5, period: 0.9, target: 'any',
+        projectile: 'arrow',
+        desc: 'Long-range archer whose storm-charged arrows outrange most defenses.',
+        hp: [380, 460, 560, 680, 820], dmg: [38, 46, 56, 68, 82]
       }
     },
-    troopOrder: ['scout', 'ranger', 'bruiser', 'demo', 'mage', 'mender'],
+    troopOrder: ['scout', 'ranger', 'bruiser', 'lancer', 'demo', 'mage', 'gyro', 'mender', 'colossus'],
+    heroOrder: ['marshal', 'huntress'],
+
+    // Hero abilities fire once per battle when the player taps the hero again after deploying it.
+    // After a raid a hero rests: recovery time is recoverMin (by level) times the share of health lost.
+    heroes: {
+      marshal: {
+        building: 'hall', recoverMin: [5, 7, 9, 11, 14],
+        ability: {
+          kind: 'rally', name: 'War Cry',
+          desc: 'Heals the Marshal, calls in Scouts, and for a few seconds he and every troop near him hit harder and move faster.',
+          sec: [8, 8, 9, 9, 10], heal: [0.25, 0.3, 0.35, 0.4, 0.45], radius: 4, dmgMult: 1.5, speedMult: 1.3,
+          summon: 'scout', summonN: [2, 2, 3, 3, 4]
+        }
+      },
+      huntress: {
+        building: 'lodge', recoverMin: [6, 8, 10, 12, 15],
+        ability: {
+          kind: 'cloak', name: 'Smoke Veil',
+          desc: 'Vanishes in smoke: defenses lose track of her, she heals, and her arrows hit far harder until she reappears.',
+          sec: [4, 4.5, 5, 5.5, 6], heal: [0.3, 0.35, 0.4, 0.45, 0.5], dmgMult: 2.5
+        }
+      }
+    },
 
     // ---------------------------------------------------------------- research
     research: {
@@ -311,7 +387,10 @@
         bruiser: { cost: [1500, 5000, 12000, 30000], time: [60, 240, 600, 1500] },
         demo:    { cost: [1200, 4000, 10000, 25000], time: [50, 200, 500, 1200] },
         mage:    { cost: [6000, 15000, 35000, 60000], time: [240, 600, 1200, 2400] },
-        mender:  { cost: [10000, 25000, 50000, 90000], time: [300, 900, 1800, 3000] }
+        mender:  { cost: [10000, 25000, 50000, 90000], time: [300, 900, 1800, 3000] },
+        lancer:  { cost: [2500, 7000, 16000, 35000], time: [90, 300, 720, 1500] },
+        gyro:    { cost: [8000, 20000, 40000, 70000], time: [300, 720, 1500, 2700] },
+        colossus:{ cost: [20000, 40000, 70000, 110000], time: [600, 1200, 2400, 3600] }
       },
       // Settlement technologies cost Credits. lab = Research Lab level needed per tech level.
       techs: {
@@ -331,17 +410,18 @@
       winDestruction: 0.5,       // destruction needed for a win (or destroy the Command Core)
       maxSpeed: 3,
       wallBreakPenalty: 30,      // extra path cost (seconds) for walking through non-wall buildings
+      guardRadius: 7,            // defending heroes chase raiders up to this far from their home
       renownWin: [8, 12, 16],    // per star count 1..3 (+2 per tier)
       renownLoss: 6
     },
 
     // ---------------------------------------------------------------- NPC world
     factions: {
-      thorn:  { name: 'Thornwood Clans', color: '#6fcf4f', biome: 'meadow', aggression: 0.5, layouts: ['spread', 'ring'], troops: ['scout', 'ranger', 'bruiser'] },
-      dune:   { name: 'Dune Reavers', color: '#f0b440', biome: 'desert', aggression: 1.0, layouts: ['compartments', 'ring'], troops: ['scout', 'bruiser', 'demo'] },
-      mire:   { name: 'Mirewatch Coven', color: '#b98cff', biome: 'swamp', aggression: 0.8, layouts: ['spread', 'compartments'], troops: ['ranger', 'mage', 'demo'] },
-      frost:  { name: 'Frostpeak Sentinels', color: '#8fd3ff', biome: 'snow', aggression: 0.6, layouts: ['fortress', 'compartments'], troops: ['bruiser', 'ranger', 'mage'] },
-      cinder: { name: 'Cinder Legion', color: '#ff6b45', biome: 'volcanic', aggression: 1.2, layouts: ['fortress', 'ring'], troops: ['bruiser', 'demo', 'mage', 'scout'] }
+      thorn:  { name: 'Thornwood Clans', color: '#6fcf4f', biome: 'meadow', aggression: 0.5, layouts: ['spread', 'ring'], troops: ['scout', 'ranger', 'bruiser', 'lancer'] },
+      dune:   { name: 'Dune Reavers', color: '#f0b440', biome: 'desert', aggression: 1.0, layouts: ['compartments', 'ring'], troops: ['scout', 'bruiser', 'demo', 'lancer'] },
+      mire:   { name: 'Mirewatch Coven', color: '#b98cff', biome: 'swamp', aggression: 0.8, layouts: ['spread', 'compartments'], troops: ['ranger', 'mage', 'demo', 'gyro'] },
+      frost:  { name: 'Frostpeak Sentinels', color: '#8fd3ff', biome: 'snow', aggression: 0.6, layouts: ['fortress', 'compartments'], troops: ['bruiser', 'ranger', 'mage', 'colossus'] },
+      cinder: { name: 'Cinder Legion', color: '#ff6b45', biome: 'volcanic', aggression: 1.2, layouts: ['fortress', 'ring'], troops: ['bruiser', 'demo', 'mage', 'scout', 'gyro', 'colossus'] }
     },
 
     // Fixed roster of opponents. pos = position on the world map (0..1).
@@ -421,5 +501,6 @@
     }
   };
 
+  CONFIG.deployOrder = CONFIG.troopOrder.concat(CONFIG.heroOrder);   // battle tray order and 1-9 keys
   CS.CONFIG = CONFIG;
 })(window.CS = window.CS || {});
