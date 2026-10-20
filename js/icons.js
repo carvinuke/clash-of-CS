@@ -87,6 +87,33 @@
       '<path d="M12 2.4 4.4 5v6.4c0 4.7 3.2 8.6 7.6 10.2 4.4-1.6 7.6-5.5 7.6-10.2V5z" fill="none"' + o + '/>');
   }
 
+  // League badges: a hexagon in the league color whose emblem grows grander with each league.
+  const HEX = 'M12 1.8 20.8 6.9v10.2L12 22.2 3.2 17.1V6.9z';
+  const PALE = ' fill="#f3ecdc" stroke="' + INK + '" stroke-width="1" stroke-linejoin="round"';
+  function chevrons(n) {
+    let out = '';
+    for (let k = 0; k < n; k++) {
+      const y = 9.6 + (k - (n - 1) / 2) * 3.4;
+      out += '<path d="M7.4 ' + (y - 1.2) + ' 12 ' + (y + 1.6) + ' 16.6 ' + (y - 1.2) + 'v2.4L12 ' + (y + 4) + ' 7.4 ' + (y + 1.2) + 'z"' + PALE + '/>';
+    }
+    return out;
+  }
+  const LEAGUE_EMBLEM = [
+    '<rect x="8" y="10.6" width="8" height="2.8" rx="1"' + PALE + '/>',
+    chevrons(1), chevrons(2), chevrons(3),
+    '<path d="m12 6 1.8 3.7 4 .5-3 2.8.8 4L12 15l-3.6 2 .8-4-3-2.8 4-.5z"' + PALE + '/>',
+    '<path d="M12 5.4 16.4 10 12 18.4 7.6 10z"' + PALE + '/><path d="M7.6 10h8.8M12 5.4 10.2 10l1.8 8.4 1.8-8.4z" fill="none" stroke="' + INK + '" stroke-width=".8"/>',
+    '<path d="M6.6 16.2 5.8 8.4l3.4 3 2.8-5.2 2.8 5.2 3.4-3-.8 7.8z"' + PALE + '/><circle cx="12" cy="13.2" r="1.2" fill="#ff6b45" stroke="' + INK + '" stroke-width=".8"/>',
+    '<path d="M7.6 17.4c-2.6-2-3-6-1-8.6M16.4 17.4c2.6-2 3-6 1-8.6" fill="none" stroke="#f3ecdc" stroke-width="1.8" stroke-linecap="round"/>' +
+      '<path d="m12 6.4 1.6 3.2 3.4.4-2.5 2.4.7 3.4-3.2-1.8-3.2 1.8.7-3.4L7 10l3.4-.4z"' + PALE + '/>'
+  ];
+  function league(i) {
+    const L = CS.CONFIG.leagues[i];
+    return svg('<path d="' + HEX + '" fill="' + L.color + '"/><path d="M12 1.8 3.2 6.9v10.2L12 22.2z" fill="#fff" fill-opacity=".2"/>' +
+      '<path d="M12 4.4 18.6 8.2v7.6L12 19.6 5.4 15.8V8.2z" fill="none" stroke="' + INK + '" stroke-opacity=".35" stroke-width="1"/>' +
+      (LEAGUE_EMBLEM[i] || LEAGUE_EMBLEM[LEAGUE_EMBLEM.length - 1]) + '<path d="' + HEX + '" fill="none"' + o + '/>');
+  }
+
   // Canvas copies of the colored icons, rasterized once at a given pixel size.
   const images = {};
   function image(name, px) {
@@ -99,5 +126,5 @@
     return im.complete && im.naturalWidth ? im : null;
   }
 
-  CS.Icons = { ICON: ICON, crest: crest, image: image, INK: INK };
+  CS.Icons = { ICON: ICON, crest: crest, league: league, image: image, INK: INK };
 })(window.CS = window.CS || {});

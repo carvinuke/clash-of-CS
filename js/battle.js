@@ -37,7 +37,7 @@
   // ---------------------------------------------------------------- creation
   /*
    * o: { kind: 'attack'|'defense', seed, biome, name, targetId, attackerId,
-   *      buildings: [{id,type,level,x,y,w,h,rot,hp?,func?,loot?}], troops: {type: n},
+   *      buildings: [{id,type,level,x,y,w,h,rot,hp?,func?,loot?,mode?}], troops: {type: n},
    *      troopLevels: {type: lv}, timeLimit (s), maxDestruction, defHpMult, defDmgMult,
    *      guards: [{type, lv, x, y}] (heroes defending the home base),
    *      spells: {type: n}, spellLv (Spell Forge level) }
@@ -95,10 +95,11 @@
     };
     if (def.attack) {
       const A = def.attack;
+      const M = s.mode === 'splash' && def.modes && lv >= def.modes.lv ? def.modes : null;   // splash mode
       c.atk = {
         kind: A.kind, range: A.range, minRange: A.minRange || 0,
         period: Math.max(1, Math.round((A.period || 1) * TR)),
-        dmg: L.dmg * (o.defDmgMult || 1), splash: A.splash || 0, slow: L.slow || 0, ground: !!A.ground, air: !!A.air,
+        dmg: L.dmg * (o.defDmgMult || 1) * (M ? M.dmgMult : 1), splash: M ? M.splash : A.splash || 0, slow: L.slow || 0, ground: !!A.ground, air: !!A.air,
         speed: (A.projectileSpeed || 0) * TICK,
         flight: Math.round((A.flight || 0) * TR), delay: Math.round((A.delay || 0) * TR),
         rampPerSec: A.rampPerSec || 0, rampMax: A.rampMax || 1,

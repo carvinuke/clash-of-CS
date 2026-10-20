@@ -18,7 +18,7 @@
       createdAt: now,
       lastTick: now,
       savedAt: 0,
-      player: { level: 1, xp: 0, renown: 0 },
+      player: { level: 1, xp: 0, renown: 0, bestRenown: 0, bestLeague: 0 },
       res: { credits: C.start.credits, energy: C.start.energy },
       base: { buildings: [], nextId: 1 },
       army: { units: {}, queue: [], progress: 0 },
@@ -30,7 +30,12 @@
         shieldUntil: 0, lastRaidAt: 0, next: null, retaliations: [],
         dayKey: 0, dayCount: 0
       },
-      stats: { raidsWon: 0, raidsLost: 0, defended: 0, raided: 0, lootCredits: 0, lootEnergy: 0, stolen: 0 },
+      stats: {
+        raidsWon: 0, raidsLost: 0, defended: 0, raided: 0, lootCredits: 0, lootEnergy: 0, stolen: 0,
+        stars3: 0, spellsCast: 0, trained: 0, collected: 0, builds: 0, trophiesWon: 0
+      },
+      achievements: {},
+      daily: { day: '', goals: [], bonus: 0 },
       log: [],
       tutorial: { step: 0, done: false },
       settings: { sfx: true, music: true, volume: 0.7, raidMode: 'normal', showGrid: false },
@@ -55,7 +60,13 @@
   // ---------------------------------------------------------------- validation & recovery
   const MIGRATIONS = {
     // v2 hides the build grid outside placement and edit mode; it was on by default before.
-    1: function (s) { if (s.settings) s.settings.showGrid = false; s.version = 2; return s; }
+    1: function (s) { if (s.settings) s.settings.showGrid = false; s.version = 2; return s; },
+    // v3 adds trophy leagues: the leagues already held count as reached, so no back-pay.
+    2: function (s) {
+      if (s.player) { const r = Number(s.player.renown) || 0; s.player.bestRenown = r; s.player.bestLeague = CS.League.index(r); }
+      s.version = 3;
+      return s;
+    }
   };
 
   function num(v, def, min, max) {
@@ -83,6 +94,10 @@
     s.player.level = num(s.player.level, 1, 1, 999);
     s.player.xp = num(s.player.xp, 0, 0);
     s.player.renown = num(s.player.renown, 0, 0);
+    s.player.bestRenown = num(s.player.bestRenown, s.player.renown, s.player.renown);
+    s.player.bestLeague = Math.round(num(s.player.bestLeague, 0, 0, C.leagues.length - 1));
+    Object.keys(fresh.stats).forEach(function (k) { s.stats[k] = num(s.stats[k], 0, 0); });
+    CS.Goals.sanitize(s);
     s.lastTick = num(s.lastTick, now, 0);
     if (s.lastTick > now) s.lastTick = now;      // clock moved backwards: never run time in reverse
 
@@ -101,6 +116,7 @@
       b.dmg = num(b.dmg, 0, 0);
       b.ruined = !!b.ruined;
       b.stored = num(b.stored, 0, 0);
+      if (b.mode !== 'splash' || !def.modes) delete b.mode;    // defense mode: absent = single target
       if (['active', 'building', 'upgrading'].indexOf(b.status) < 0) b.status = 'active';
       if (b.status !== 'active') {
         if (!b.timer || !isFinite(b.timer.end) || !isFinite(b.timer.start)) { b.status = 'active'; b.timer = null; }

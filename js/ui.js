@@ -150,10 +150,10 @@
 
   // ---------------------------------------------------------------- top bar
   function topbarHtml() {
-    return '<button class="hb-player" data-act="stats" data-tip="<b>Commander level</b> rises with experience from building, research and battles. <b>Renown</b> rises with victories and successful defenses.">' +
+    return '<button class="hb-player" data-act="stats" data-tip="<b>Commander level</b> rises with experience from building, research and battles. <b>Trophies</b> rise with victories and successful defenses and set your league. Opens Goals <kbd>G</kbd>">' +
       '<span class="crest">' + banner() + '<b id="tbLevel">1</b></span>' +
       '<span class="hb-pinfo"><span class="hb-name">Commander</span><span class="bar xp"><span id="tbXp"></span></span></span>' +
-      '<span class="hb-renown">' + ic('renown') + '<b id="tbRenown">0</b></span></button>' +
+      '<span class="hb-renown"><i class="ic lg" id="tbLeague"></i><b id="tbRenown">0</b></span></button>' +
       resBox('credits') + resBox('energy') +
       '<div class="hb-stat" id="tbEngBox" data-tip="Each Engineer runs one construction or upgrade at a time. Engineering Stations bring more.">' + ic('hammer') +
       '<span class="hb-sv"><b id="tbEng">0/0</b><small>Engineers</small></span></div>' +
@@ -173,6 +173,7 @@
     setText('tbLevel', p.level);
     setWidth('tbXp', p.xp / C.player.xpForLevel(p.level));
     setText('tbRenown', U.fmt(p.renown));
+    setHtml($('tbLeague'), CS.Icons.league(CS.League.index(p.renown)));
     const cap = Eco.capacity(st), prod = Eco.production(st);
     Eco.RES.forEach(function (r) {
       setText('tb_' + r, U.fmt(st.res[r]));
@@ -240,13 +241,14 @@
   ACT.prepare = function () { UI.tab = 'defense'; ACT.build(); };
 
   // ---------------------------------------------------------------- nav rail & toolbar
-  function navBtn(act, icon, label, key, cls) {
-    return '<button class="nav ' + (cls || '') + '" data-act="' + act + '" data-tip="' + label + ' <kbd>' + key + '</kbd>">' + ic(icon) + '<span>' + label + '</span></button>';
+  function navBtn(act, icon, label, key, cls, extra) {
+    return '<button class="nav ' + (cls || '') + '" data-act="' + act + '" data-tip="' + label + ' <kbd>' + key + '</kbd>">' + ic(icon) + '<span>' + label + '</span>' + (extra || '') + '</button>';
   }
 
   function sideHtml() {
     return navBtn('world', 'sword', 'Attack', 'M', 'attack') + navBtn('army', 'army', 'Army', 'T') +
-      navBtn('research', 'flask', 'Research', 'R') + navBtn('log', 'scroll', 'Log', 'L') + navBtn('settings', 'gear', 'Settings', 'Esc');
+      navBtn('research', 'flask', 'Research', 'R') + navBtn('goals', 'star', 'Goals', 'G', '', '<b class="badge" id="sbGoals"></b>') +
+      navBtn('log', 'scroll', 'Log', 'L') + navBtn('settings', 'gear', 'Settings', 'Esc');
   }
 
   function toolBtn(act, icon, label, key, extra) {
@@ -275,6 +277,7 @@
     build.disabled = edit.disabled = busy;
     setHtml(edit, ic(G.edit ? 'check' : 'move') + '<span>' + (G.edit ? 'Done' : 'Edit') + '</span>');
     setText('tbReady', st.base.buildings.filter(Eco.ready).length || '');
+    setText('sbGoals', CS.Goals.claimable(st, CS.Clock.now()) || '');
     const cost = Eco.repairAllCost(st);
     setHtml($('repairWrap'), cost && !busy ? '<button class="tool repair" data-act="repairAll" data-tip="Repair every damaged building now. Engineering Stations also repair for free over time.">' +
       ic('wrench') + costHtml({ credits: cost }, st) + '</button>' : '');
@@ -332,7 +335,8 @@
     }
     if (def.attack) {
       const A = def.attack;
-      const dm = CS.Research.mult(st, 'targeting');
+      const MM = b.mode === 'splash' && def.modes && lv >= def.modes.lv ? def.modes : null;
+      const dm = CS.Research.mult(st, 'targeting') * (MM ? MM.dmgMult : 1);
       if (A.kind === 'lance') row('Damage', L.dmg * dm, N && N.dmg * dm, function (v) { return Math.round(v) + '/s, up to x' + A.rampMax; });
       else if (A.kind === 'mine') row('Blast damage', L.dmg * dm, N && N.dmg * dm, function (v) { return Math.round(v); });
       else row('Damage', L.dmg * dm, N && N.dmg * dm, function (v) { return Math.round(v) + (A.period ? ' every ' + A.period + 's' : ''); });
@@ -341,7 +345,7 @@
       if (A.chain) rows.push('<tr><td>Chain</td><td colspan="2">Arcs to ' + A.chain + ' targets, ' + Math.round((1 - A.falloff) * 100) + '% weaker each jump</td></tr>');
       if (A.kind === 'cone') rows.push('<tr><td>Breath</td><td colspan="2">Burns every troop in a cone</td></tr>');
       if (A.targeting === 'aura') rows.push('<tr><td>Aura</td><td colspan="2">Hits every troop in range at once</td></tr>');
-      rows.push('<tr><td>Range</td><td colspan="2">' + (A.minRange ? A.minRange + '&ndash;' : '') + A.range + ' tiles' + (A.splash ? ', splash ' + A.splash : '') + '</td></tr>');
+      rows.push('<tr><td>Range</td><td colspan="2">' + (A.minRange ? A.minRange + '&ndash;' : '') + A.range + ' tiles' + (A.splash || MM ? ', splash ' + (MM ? MM.splash : A.splash) : '') + '</td></tr>');
       rows.push('<tr><td>Targets</td><td colspan="2">' + (A.ground ? 'Ground only' : A.air ? 'Air only' : 'Ground and air') + (A.targeting === 'toughest' ? ', toughest first' : '') + '</td></tr>');
     }
     if (b.type === 'lab') rows.push('<tr><td>Research cap</td><td colspan="2">Upgrades up to Lv ' + (lv + 1) + '</td></tr>');
@@ -384,6 +388,17 @@
         extra += '<div class="wallrow">' + batch.walls.length + ' walls at Lv ' + b.level + '. <button class="sbtn" data-act="wallsUp" data-level="' + b.level + '"' + (batch.n && !busy ? '' : ' disabled') + ' data-tip="' + esc(batch.reason || 'Upgrades as many walls of this level as you can afford') + '">' + ic('up') + 'Upgrade ' + (batch.n || 0) + ' for ' + U.fmt(batch.n * batch.cost) + '</button></div>';
       }
     }
+    if (def.modes && b.level >= 1) {
+      const can = b.level >= def.modes.lv && !busy;
+      const seg = function (v, label, tip) {
+        const on = (b.mode || 'single') === v;
+        return '<button class="seg' + (on ? ' on' : '') + '" role="radio" aria-checked="' + on + '" data-act="defMode" data-v="' + v + '"' + (can ? '' : ' disabled') + ' data-tip="' + tip + '">' + label + '</button>';
+      };
+      extra += '<div class="fmode"><span class="lbl">Firing mode</span><div class="segs" role="radiogroup" aria-label="Firing mode">' +
+        seg('single', 'Single target', 'Full damage to one attacker at a time') +
+        seg('splash', 'Splash', 'Bursting shells: ' + Math.round(def.modes.dmgMult * 100) + '% damage to every attacker within ' + def.modes.splash + ' tiles of the target') + '</div>' +
+        (b.level < def.modes.lv ? '<small>Splash mode unlocks at Lv ' + def.modes.lv + '.</small>' : '') + '</div>';
+    }
     const up = Eco.upgradeInfo(st, b);
     let upHtml = '';
     if (up.maxed) upHtml = '<div class="maxed">Maximum level</div>';
@@ -417,7 +432,7 @@
     const el = $('panel');
     const b = G.sel && G.mode !== 'raid' ? Base.find(G.state, G.sel) : null;
     if (!b) { el.classList.add('hidden'); el.dataset.key = el.dataset.id = ''; return; }
-    const key = b.id + ':' + b.level + ':' + b.status + ':' + b.ruined + ':' + Math.floor(b.stored) + ':' + Math.round(b.dmg) + ':' + Math.floor(G.state.res.credits) + ':' + Math.floor(G.state.res.energy) + ':' + G.mode + ':' + !!G.state.research.active + ':' + Eco.engineers(G.state).free;
+    const key = b.id + ':' + b.level + ':' + b.status + ':' + b.ruined + ':' + Math.floor(b.stored) + ':' + Math.round(b.dmg) + ':' + Math.floor(G.state.res.credits) + ':' + Math.floor(G.state.res.energy) + ':' + G.mode + ':' + !!G.state.research.active + ':' + Eco.engineers(G.state).free + ':' + b.mode;
     if (!full && el.dataset.key === key) return;
     el.dataset.key = key;
     if (el.dataset.id !== b.id) {
@@ -1108,15 +1123,18 @@
     else {
       const diff = NPC.difficulty(st, s);
       const defs = NPC.defenseSummary(st, s);
+      const lg = CS.League.of(st);
       const chips = Object.keys(defs).filter(function (type) { return !C.buildings[type].boss; }).map(function (type) {
         const d = defs[type];
         return '<span class="dchip" data-tip="' + esc(C.buildings[type].name) + ' &times;' + d.n + ', up to Lv ' + d.maxLv + '">' + thumb(type, d.maxLv, fac.color, 48) +
           '<span><b>&times;' + d.n + '</b><small>Lv ' + d.maxLv + '</small></span></span>';
       }).join('');
       const boss = s.defense ? C.buildings[s.defense] : null;
-      body = (boss ? kv('Boss', '<span class="dchip boss" data-tip="' + esc(boss.desc) + '">' + thumb(s.defense, Math.min(boss.levels.length, 1 + rec.fortify), fac.color, 48) + '<span><b>' + esc(boss.name) + '</b><small>' + esc(boss.desc) + '</small></span></span>') +
-        kv('Reward', rec.claimed ? '<small>' + ic('check') + 'Claimed. You can still raid it for loot.</small>' : costHtml({ credits: s.reward.credits, energy: s.reward.energy }) + '<small>+' + s.reward.renown + ' renown, +' + s.reward.xp + ' XP, once, for your first victory</small>', 'reward') : '') +
+      body = (boss ? kv('Boss', '<span class="dchip boss" data-tip="' + esc(boss.desc) + '">' + thumb(s.defense, Math.min(boss.levels.length, 1 + rec.fortify + lg.npcBoost), fac.color, 48) + '<span><b>' + esc(boss.name) + '</b><small>' + esc(boss.desc) + '</small></span></span>') +
+        kv('Reward', rec.claimed ? '<small>' + ic('check') + 'Claimed. You can still raid it for loot.</small>' : costHtml({ credits: s.reward.credits, energy: s.reward.energy }) + '<small>+' + s.reward.renown + ' trophies, +' + s.reward.xp + ' XP, once, for your first victory</small>', 'reward') : '') +
         kv('Difficulty', '<b class="diff ' + diff.cls + '">' + diff.label + '</b><small>for your current army</small>') +
+        (lg.npcBoost || lg.loot > 1 ? kv('League', '<span class="lgline"><i class="ic">' + CS.Icons.league(CS.League.index(st.player.renown)) + '</i>' + lg.name + '</span><small>' +
+          (lg.npcBoost ? '+' + lg.npcBoost + ' defense level' + (lg.npcBoost > 1 ? 's' : '') + ', ' : '') + 'loot &times;' + lg.loot + '</small>') : '') +
         kv('Available loot', costHtml(NPC.loot(st, s, t)) + '<small>+' + U.fmt(C.tiers[s.tier].bonus) + ' of each for a 3-star win</small>') +
         kv('Defenses', chips ? '<span class="dchips">' + chips + '</span>' : '<small>None</small>') +
         kv('Record', '<span><b>' + rec.wins + '</b> won &middot; <b>' + rec.losses + '</b> lost</span>' + (rec.stars ? stars(rec.stars) : '') + (rec.fortify ? '<small>Fortified &times;' + rec.fortify + ' after your victories</small>' : '')) +
@@ -1148,6 +1166,106 @@
       cell('Lost to raiders', U.fmt(s.stolen)) + '</div>' +
       '<h4>Recent events</h4>' + (rows ? '<ul class="lrows">' + rows + '</ul>' : '<p class="hint">Nothing has happened yet.</p>') + '</div>';
   };
+
+  // ----- goals: trophy leagues, achievements and daily goals
+  UI.gtab = 'daily';
+
+  function lgIcon(i) { return '<i class="ic">' + CS.Icons.league(i) + '</i>'; }
+
+  function rewardHtml(r) {
+    return costHtml(r) + (r.xp ? '<span class="cost">' + ic('star') + r.xp + ' XP</span>' : '');
+  }
+
+  function goalRow(art, name, sub, value, target, side, cls) {
+    return '<div class="rrow grow ' + (cls || '') + '"><span class="r-art">' + art + '</span>' +
+      '<div class="r-main"><div class="r-head"><b class="r-name">' + name + '</b></div><span class="r-eff">' + sub + '</span>' +
+      (target ? '<div class="gprog">' + staticBar(value / target, 'q') + '<small>' + U.fmt(Math.min(value, target)) + ' / ' + U.fmt(target) + '</small></div>' : '') +
+      '</div><div class="r-side">' + side + '</div></div>';
+  }
+
+  function claimBtn(act, attrs, ready, label) {
+    return '<button class="sbtn' + (ready ? ' claim' : '') + '" data-act="' + act + '"' + attrs + (ready ? '' : ' disabled') + '>' + (ready ? ic('check') + (label || 'Claim') : 'In progress') + '</button>';
+  }
+
+  function leagueTab(st) {
+    const p = st.player, i = CS.League.index(p.renown), L = C.leagues[i], N = C.leagues[i + 1];
+    const effects = function (x) {
+      const out = [];
+      if (x.npcBoost) out.push('Enemy defenses +' + x.npcBoost + ' level' + (x.npcBoost > 1 ? 's' : ''));
+      if (x.raidArmy > 1) out.push('raiders bring ' + Math.round((x.raidArmy - 1) * 100) + '% more troops');
+      if (x.loot > 1) out.push('loot &times;' + x.loot);
+      return out.length ? out.join(', ') : 'Standard opponents';
+    };
+    const top = '<div class="lgcur" style="--lg:' + L.color + '"><span class="lgbig">' + CS.Icons.league(i) + '</span><div class="lg-main">' +
+      '<span class="lbl">Current league</span><b class="r-name">' + L.name + ' League</b>' +
+      '<span class="r-eff">' + ic('renown') + U.fmt(p.renown) + ' trophies &middot; best ' + U.fmt(p.bestRenown) + '</span>' +
+      (N ? '<div class="gprog">' + staticBar((p.renown - L.min) / (N.min - L.min), 'q') + '<small>' + U.fmt(N.min - p.renown) + ' to ' + N.name + '</small></div>' : '<span class="r-eff">The top of the ladder.</span>') +
+      '<span class="r-eff">' + effects(L) + '</span></div></div>';
+    const rows = C.leagues.map(function (x, k) {
+      const reached = p.bestLeague >= k;
+      const side = x.reward ? '<span class="rcost">' + costHtml({ credits: x.reward, energy: x.reward }) + '<small>' + (reached ? ic('check') + 'Received' : 'First time reward') + '</small></span>' : '';
+      return goalRow(lgIcon(k), x.name, U.fmt(x.min) + '+ trophies &middot; ' + effects(x), 0, 0, side, (k === i ? 'cur' : '') + (reached ? '' : ' locked'));
+    }).reverse().join('');
+    return top + '<h4>The ladder</h4>' + rows +
+      '<p class="hint mfoot">Win raids to gain trophies (more for more stars and higher tiers). Failed raids and raids on your base cost trophies. The higher your league, the tougher and richer every enemy settlement becomes.</p>';
+  }
+
+  function achievementsTab(st) {
+    return C.achievements.map(function (a) {
+      const s = CS.Goals.achievement(st, a);
+      const side = s.maxed ? '<span class="rmax">' + ic('star') + 'Complete</span>'
+        : '<span class="rcost">' + rewardHtml(C.achievementRewards[s.claimed]) + '</span>' + claimBtn('claimAch', ' data-id="' + a.id + '"', s.ready);
+      return goalRow(stars(s.claimed), esc(a.name), esc(CS.Goals.text(a, s.target)), s.value, s.maxed ? 0 : s.target, side, s.maxed ? 'done' : s.ready ? 'ready' : '');
+    }).join('');
+  }
+
+  function dailyTab(st) {
+    const t = CS.Clock.now(), D = CS.Goals.daily(st, t);
+    const mid = new Date(t); mid.setHours(24, 0, 0, 0);
+    const rows = D.goals.map(function (g, i) {
+      const s = CS.Goals.dailyGoal(st, g), r = {}; r[s.def.res] = g.reward;
+      const side = g.claimed ? '<span class="rmax">' + ic('check') + 'Claimed</span>'
+        : '<span class="rcost">' + costHtml(r) + '</span>' + claimBtn('claimDaily', ' data-i="' + i + '"', s.ready);
+      return goalRow(ic(s.def.res === 'credits' ? 'credits' : 'energy'), esc(s.text), '', s.value, g.n, side, g.claimed ? 'done' : s.ready ? 'ready' : '');
+    }).join('');
+    const amt = D.goals.length ? D.goals[0].reward * C.daily.bonusMult : 0;
+    const bonus = goalRow(ic('crate'), 'Daily chest', 'Claim all three goals to open it', D.goals.filter(function (g) { return g.claimed; }).length, D.goals.length,
+      D.bonus ? '<span class="rmax">' + ic('check') + 'Opened</span>' : '<span class="rcost">' + costHtml({ credits: amt, energy: amt }) + '</span>' + claimBtn('claimBonus', '', CS.Goals.bonusReady(st, t), 'Open'),
+      D.bonus ? 'done' : CS.Goals.bonusReady(st, t) ? 'ready' : '');
+    return '<div class="ractive idle">' + ic('clock') + '<span>New goals in ' + until(mid.getTime()) + '</span></div>' + rows + bonus;
+  }
+
+  MODALS.goals = function () {
+    const st = G.state, t = CS.Clock.now();
+    let achReady = 0, dayReady = 0;
+    C.achievements.forEach(function (a) { const s = CS.Goals.achievement(st, a); achReady += s.done - s.claimed; });
+    CS.Goals.daily(st, t).goals.forEach(function (g) { if (CS.Goals.dailyGoal(st, g).ready) dayReady++; });
+    if (CS.Goals.bonusReady(st, t)) dayReady++;
+    const tabs = [['daily', 'Daily goals', dayReady], ['achievements', 'Achievements', achReady], ['league', 'League', 0]].map(function (x) {
+      const on = UI.gtab === x[0];
+      return '<button class="tab' + (on ? ' on' : '') + '" role="tab" aria-selected="' + on + '" data-act="gtab" data-tab="' + x[0] + '">' + x[1] + (x[2] ? ' <b class="tcount">' + x[2] + '</b>' : '') + '</button>';
+    }).join('');
+    const i = CS.League.index(st.player.renown);
+    const body = UI.gtab === 'league' ? leagueTab(st) : UI.gtab === 'achievements' ? achievementsTab(st) : dailyTab(st);
+    return head('Goals', 'star', false, hstat('renown', U.fmt(st.player.renown), C.leagues[i].name + ' League', '', 'Your trophies and league')) +
+      '<div class="tabs" role="tablist">' + tabs + '</div><div class="mbody">' + body + '</div>';
+  };
+
+  function claimed(r) {
+    if (!r) return;
+    CS.Audio.play('coins');
+    UI.toast('Reward claimed: ' + Eco.RES.filter(function (k) { return r[k]; }).map(function (k) { return U.fmt(r[k]) + ' ' + Eco.resName(k); }).join(' and ') + (r.xp ? ', ' + r.xp + ' XP' : ''), 'good', 'check');
+    G.save();
+    UI.refresh(true);
+  }
+
+  Object.assign(ACT, {
+    gtab: function (el) { UI.gtab = el.dataset.tab; renderModal(); CS.Audio.play('click'); },
+    claimAch: function (el) { claimed(CS.Goals.claimAchievement(G.state, el.dataset.id)); },
+    claimDaily: function (el) { claimed(CS.Goals.claimDaily(G.state, Number(el.dataset.i), CS.Clock.now())); },
+    claimBonus: function () { claimed(CS.Goals.claimBonus(G.state, CS.Clock.now())); },
+    defMode: function (el) { G.setDefMode(G.sel, el.dataset.v); }
+  });
 
   // ----- settings
   function srow(label, sub, control, cls) {
@@ -1292,7 +1410,7 @@
       '<div class="dr-grid"><div><span class="lbl">Damage</span><b>' + U.pct(rep.destruction) + '%</b>' + staticBar(rep.destruction, 'dmg') + '</div>' +
       '<div><span class="lbl">Raiders defeated</span><b>' + rep.killed + ' / ' + rep.raiders + '</b></div>' +
       '<div><span class="lbl">Stolen</span><b>' + (rep.stolen.credits + rep.stolen.energy ? costHtml(rep.stolen) : 'Nothing') + '</b></div>' +
-      '<div><span class="lbl">Renown</span><b class="' + (rep.renown > 0 ? 'good' : rep.renown < 0 ? 'bad' : '') + '">' + (rep.renown > 0 ? '+' : '') + rep.renown + '</b></div></div>' +
+      '<div><span class="lbl">Trophies</span><b class="' + (rep.renown > 0 ? 'good' : rep.renown < 0 ? 'bad' : '') + '">' + (rep.renown > 0 ? '+' : '') + rep.renown + '</b></div></div>' +
       (lost ? '<div class="dr-line"><span class="lbl">Destroyed</span><span>' + lost + '</span></div>' : '') + top +
       (rep.heroes || []).map(function (g) {
         return '<div class="dr-line"><span class="lbl">Hero</span><span class="dr-top">' + troopImg(g.type, null, 40) + esc(C.troops[g.type].name) +
@@ -1638,8 +1756,9 @@
       (r.bonus ? '<small>Includes a victory bonus of ' + U.fmt(r.bonus) + ' each.</small>' : '') +
       (r.reward ? '<small class="good">Includes the boss reward of ' + U.fmt(r.reward.credits) + ' each.</small>' : '') +
       (r.wasted > 0 ? '<small class="bad">' + U.fmt(r.wasted) + ' could not be stored. Your storages are full.</small>' : '') +
-      '<h4>Renown</h4><div class="rs-renown ' + (r.renown > 0 ? 'up' : r.renown < 0 ? 'down' : '') + '">' + ic('renown') +
-      (r.renown ? (r.renown > 0 ? '+' : '') + r.renown : 'Unchanged') + '</div></section>' +
+      '<h4>Trophies</h4><div class="rs-renown ' + (r.renown > 0 ? 'up' : r.renown < 0 ? 'down' : '') + '">' + ic('renown') +
+      (r.renown ? (r.renown > 0 ? '+' : '') + r.renown : 'Unchanged') + '</div>' +
+      '<small class="lgline"><i class="ic">' + CS.Icons.league(CS.League.index(G.state.player.renown)) + '</i>' + U.fmt(G.state.player.renown) + ' trophies &middot; ' + CS.League.of(G.state).name + ' League</small></section>' +
       '<section class="rs-box"><h4>Troops</h4>' + troopSummary(res) + '<small>Survivors return to your army.</small>' + spellSummary(res) + '</section></div>' + notes + tips + '</div>' +
       '<div class="rs-foot"><button class="mbtn primary" data-act="home">' + ic('home') + '<span>Return home</span></button></div>';
   };
@@ -1705,7 +1824,7 @@
       '<h1 class="wordmark"><span class="w1">Clash</span><span class="w2">of</span><span class="w3">CS</span></h1></div>' +
       '<p class="tagline">Build your settlement. Train an army. Raid your rivals.</p>' + msg +
       (existing ? '<div class="tsave"><span>' + ic('star') + 'Commander <b>Lv ' + st.player.level + '</b></span><span>' + ic('core') + 'Command Core <b>Lv ' + Base.coreLevel(st) + '</b></span>' +
-        '<span>' + ic('renown') + '<b>' + U.fmt(st.player.renown) + '</b> renown</span></div>' : '') +
+        '<span><i class="ic">' + CS.Icons.league(CS.League.index(st.player.renown)) + '</i><b>' + U.fmt(st.player.renown) + '</b> trophies</span></div>' : '') +
       '<div class="tactions"><button class="mbtn primary big" data-act="play">' + ic('sword') + '<span>' + (existing ? 'Continue' : 'Play') + '</span></button>' +
       (existing ? '<button class="sbtn ghost" data-act="titleNew">Start a new game</button>' : '') + '</div>' +
       '<p class="foot">Runs fully offline. Your progress is saved in this browser.</p></div>';
@@ -1758,7 +1877,8 @@
     army: function () { UI.open('army'); },
     research: function () { UI.open('research'); },
     log: function () { UI.open('log'); },
-    stats: function () { UI.open('log'); },
+    goals: function () { UI.open('goals'); },
+    stats: function () { UI.gtab = 'league'; UI.open('goals'); },
     settings: function () { UI.open('settings'); },
     closePanel: function () { G.select(null); },
     upgrade: function () { G.upgrade(G.sel); },

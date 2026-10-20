@@ -67,6 +67,7 @@
     if (!def.produces || b.stored < 1) return 0;
     const got = Eco.add(state, def.produces, Math.floor(b.stored));
     b.stored -= got;
+    state.stats.collected += got;
     if (got > 0) CS.Bus.emit('collected', { id: b.id, res: def.produces, amount: got });
     return got;
   };
@@ -138,6 +139,7 @@
     if (instant) CS.Player.addXp(state, 1);
     else b.timer = { start: now, end: now + def.levels[0].time * 1000, to: 1, cost: chk.cost };
     if (def.produces) b.prodAt = now;
+    if (type !== 'wall') state.stats.builds++;
     CS.Bus.emit('build:placed', { type: type, id: b.id });
     return { ok: true, b: b };
   };
@@ -177,6 +179,7 @@
       b.status = 'upgrading';
       b.timer = { start: now, end: now + info.time * 1000, to: b.level + 1, cost: info.cost };
     }
+    if (b.type !== 'wall') state.stats.builds++;
     CS.Bus.emit('build:upgrade', { id: b.id, type: b.type });
     return { ok: true };
   };
@@ -365,8 +368,6 @@
         CS.Bus.emit('player:level', { level: p.level });
       }
     },
-    addRenown: function (state, n) {
-      state.player.renown = Math.max(0, state.player.renown + n);
-    }
+    addRenown: function (state, n) { CS.League.change(state, n); }
   };
 })(window.CS = window.CS || {});

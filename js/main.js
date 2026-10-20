@@ -614,6 +614,16 @@
     return true;
   };
 
+  // Blaster Turrets and Sentry Spires switch between single-target and splash fire once upgraded enough.
+  G.setDefMode = function (id, mode) {
+    const b = Base.find(G.state, id), M = b && C.buildings[b.type].modes;
+    if (!M || b.level < M.lv || G.mode !== 'village') return;
+    if (mode === 'splash') b.mode = 'splash'; else delete b.mode;
+    sfx('click');
+    G.save();
+    refresh();
+  };
+
   G.toggleSpeed = function () {
     G.speed = G.speed >= C.battle.maxSpeed ? 1 : G.speed + 1;
     sfx('click');
@@ -691,10 +701,12 @@
     CS.Player.addRenown(st, renown);
     CS.Player.addXp(st, (res.victory ? 4 + res.stars * 2 * s.tier : 1) + (reward ? reward.xp : 0));
     if (res.victory) st.stats.raidsWon++; else st.stats.raidsLost++;
+    if (res.stars === 3) st.stats.stars3++;
+    st.stats.spellsCast += sum(res.cast);
     st.stats.lootCredits += gained.credits;
     st.stats.lootEnergy += gained.energy;
     const notes = NPC.onRaidResult(st, s, res, t);
-    if (reward) notes.unshift('Boss defeated! ' + s.leader + ' yields ' + s.name + '. You claimed its reward of ' + U.fmt(reward.credits) + ' Credits, ' + U.fmt(reward.energy) + ' Energy and ' + reward.renown + ' renown.');
+    if (reward) notes.unshift('Boss defeated! ' + s.leader + ' yields ' + s.name + '. You claimed its reward of ' + U.fmt(reward.credits) + ' Credits, ' + U.fmt(reward.energy) + ' Energy and ' + reward.renown + ' trophies.');
     Object.keys(res.heroHp).forEach(function (h) {
       const hs = Army.heroStatus(st, h, t);
       if (hs.code === 'resting') notes.push(C.troops[h].name + (res.heroHp[h] > 0 ? ' was wounded' : ' fell in battle') + ' and rests for ' + U.fmtTime(hs.left) + ' before the next raid.');
@@ -1341,6 +1353,11 @@
       sfx(e.res === 'credits' ? 'coins' : 'energy');
     });
     CS.Bus.on('player:level', function (e) { toast('Commander level ' + e.level + '!', 'good', 'star'); sfx('levelup'); });
+    CS.Bus.on('league:change', function (e) {
+      const L = C.leagues[e.to];
+      if (e.to > e.from) { toast('Promoted to the ' + L.name + ' League!' + (e.first && L.reward ? ' Reward: ' + U.fmt(L.reward) + ' of each resource.' : ''), 'good', 'renown'); sfx('levelup'); }
+      else toast('You dropped to the ' + L.name + ' League.', 'bad', 'renown');
+    });
     document.addEventListener('visibilitychange', function () { if (document.hidden) onHidden(); else onVisible(); });
     window.addEventListener('pagehide', onHidden);
     window.addEventListener('pageshow', function (e) { if (e.persisted) onVisible(); });
