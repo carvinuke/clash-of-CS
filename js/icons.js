@@ -61,6 +61,7 @@
     check: svg('<path d="m4.5 12.5 4.6 4.6L19.5 6.7" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>'),
     close: svg('<path d="M6 6l12 12M18 6 6 18" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/>'),
     speed: svg('<path d="M3.5 5.5v13l7.6-6.5zM12.4 5.5v13l7.6-6.5z" fill="currentColor"/>'),
+    skip: svg('<path d="M3 5.5v13l7.2-6.5zM10.8 5.5v13l7.2-6.5z" fill="currentColor"/><path d="M20.2 5.5v13" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/>'),
     flag: svg('<path d="M5.5 21.5v-18" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><path d="M5.5 4.2h12.6l-2.9 4 2.9 4H5.5" fill="currentColor"/>'),
     home: svg('<path d="M3.4 11.2 12 3.6l8.6 7.6M5.6 9.4v11.2h4.6v-6h3.6v6h4.6V9.4" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"/>'),
     chevron: svg('<path d="m9 5.5 6.5 6.5L9 18.5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>')

@@ -864,100 +864,216 @@
   });
 
   // ---------------------------------------------------------------- battle HUD
+  // Raid HUD: the target and its loot (top left), the clock (top centre), destruction with the
+  // three victory conditions (top right), a hint, the troop bar (bottom left) and the battle
+  // controls (bottom right). Every value is read from the live battle.
+  function pctOf(f) { return Math.floor(f * 100 + 1e-6); }   // rounded down, so 49.6% never reads as a win
+  function sumOf(o) { let n = 0; Object.keys(o || {}).forEach(function (k) { n += o[k]; }); return n; }
+  function setClass(el, c) { if (el.className !== c) el.className = c; }
+  function setTxt(el, v) { v = String(v); if (el.textContent !== v) el.textContent = v; }
+  function setAttr(el, k, v) { if (el.getAttribute(k) !== v) el.setAttribute(k, v); }
+
+  const RAID_END = { wiped: 'Every building destroyed', time: 'Time ran out', troops: 'No troops left', retreat: 'You ended the battle' };
+
+  function lootRow(r) {
+    return '<div class="bh-lr">' + resIcon(r) + '<b id="bhGot_' + r + '">0</b><div class="bar ' + r + '"><div id="bhBar_' + r + '"></div></div><small id="bhLeft_' + r + '"></small></div>';
+  }
+
+  function goal(i, label, tip) {
+    return '<li id="bhGoal' + i + '" data-tip="' + tip + '">' + ic('starOff') + '<span>' + label + '</span></li>';
+  }
+
   function battleHudHtml() {
-    return '<div class="bh-top" data-inset="t"><div class="bh-target"><b id="bhName"></b><small id="bhSub"></small><div class="bh-loot" id="bhLoot"></div></div>' +
-      '<div class="bh-timer"><small id="bhPhase"></small><b id="bhTime"></b></div>' +
-      '<div class="bh-score"><b id="bhPct">0%</b><span id="bhStars"></span></div></div>' +
-      '<div class="bh-hint" id="bhHint"></div>' +
-      '<div class="bh-bottom" data-inset="b"><div class="bh-troops" id="bhTroops"></div><div class="bh-ctrl">' +
-      '<button class="cbtn" data-act="speed" id="bhSpeed" data-tip="Battle speed <kbd>F</kbd>">' + ICON.speed + '<b>1x</b></button>' +
-      '<button class="mbtn danger" data-act="endBattle" id="bhEnd">' + ic('flag') + '<span>End battle</span></button></div></div>';
+    const half = pctOf(C.battle.winDestruction);
+    return '<div class="bh-top" data-inset="t">' +
+      '<div class="bh-target plaque"><div class="bh-id"><span class="bh-crest" id="bhCrest"></span><div class="bh-idt"><b id="bhName"></b><small id="bhSub"></small><small class="bh-diff" id="bhDiff"></small></div></div>' +
+      '<div class="bh-loot"><span class="lbl">Loot taken</span>' + lootRow('credits') + lootRow('energy') + '</div></div>' +
+      '<div class="bh-clock plaque" id="bhClock"><span class="lbl" id="bhPhase"></span><b id="bhTime"></b><small id="bhNote"></small></div>' +
+      '<div class="bh-score plaque"><div class="bh-pct"><b id="bhPct">0%</b><span class="lbl">Destroyed</span></div><ul class="bh-goals" aria-label="Victory stars">' +
+      goal(0, half + '%', 'Destroy ' + half + '% of the buildings') + goal(1, 'Core', 'Destroy the Command Core') + goal(2, '100%', 'Destroy every building') + '</ul></div></div>' +
+      '<div class="bh-bottom" data-inset="b">' +
+      '<div class="bh-troops plaque"><div class="bh-count"><b id="bhCount">0</b><span class="lbl">Troops left</span></div><div class="bh-tlist" id="bhTroops"></div></div>' +
+      '<p class="bh-hint" id="bhHint"></p>' +
+      '<div class="bh-ctrl plaque"><button class="mbtn bh-speed" data-act="speed" id="bhSpeed" data-tip="Battle speed <kbd>F</kbd>">' + ic('speed') + '<span>1x</span></button>' +
+      '<button class="mbtn" data-act="endBattle" id="bhEnd"></button></div></div>';
   }
 
   function defHudHtml() {
-    return '<div class="dh-l">' + ic('warn') + '<div><b id="dhName"></b><small id="dhInfo"></small></div></div>' +
-      '<button class="cbtn" data-act="speed" id="dhSpeed" aria-label="Battle speed" data-tip="Battle speed <kbd>F</kbd>">' + ICON.speed + '<b>1x</b></button>' +
-      '<button class="sbtn" data-act="skipDefense" data-tip="Resolve the rest of the fight instantly">Skip</button>';
+    const half = pctOf(C.battle.winDestruction);
+    return '<div class="dh-who" id="dhWho"><span class="dh-crest" id="dhCrest"></span><div class="dh-wt"><span class="lbl" id="dhKind"></span><b id="dhName"></b></div></div>' +
+      '<div class="dh-stats"><div class="dh-stat"><b id="dhTime">0:00</b><small>left</small></div>' +
+      '<div class="dh-stat" id="dhDmg" data-tip="The raiders win at ' + half + '% damage or by destroying your Command Core."><b>0%</b><small>damage</small></div>' +
+      '<div class="dh-stat"><b id="dhLeft">0</b><small>raiders left</small></div></div>' +
+      '<div class="dh-act"><button class="sbtn bh-speed" data-act="speed" id="dhSpeed" data-tip="Battle speed <kbd>F</kbd>">' + ic('speed') + '<span>1x</span></button>' +
+      '<button class="sbtn" data-act="skipDefense" id="dhSkip" data-tip="Resolve the rest of the fight instantly">' + ic('skip') + '<span>Skip</span></button></div>';
   }
 
-  UI.refreshBattle = function () {
-    const b = G.battle || G.lastBattle;
-    if (!b || G.mode !== 'raid') return;
-    const troops = C.troopOrder.filter(function (t) { return (b.meta.brought || {})[t] > 0; }).map(function (t, i) {
-      const n = b.pool[t] || 0;
-      return '<button class="tbtn' + (G.troopSel === t ? ' on' : '') + (n ? '' : ' empty') + '" data-act="troop" data-type="' + t + '" data-tip="' + esc(C.troops[t].name) + ' <kbd>' + (i + 1) + '</kbd>">' + troopImg(t, null, 56) + '<b>' + n + '</b><span class="lvl">' + (b.troopLv[t] || 1) + '</span></button>';
-    }).join('');
-    $('bhTroops').innerHTML = troops;
-    $('bhSpeed').querySelector('b').textContent = G.speed + 'x';
-    const endBtn = $('bhEnd');
-    endBtn.querySelector('span').textContent = b.deployedAny ? 'End battle' : 'Return home';
-    endBtn.className = 'mbtn ' + (b.deployedAny ? 'danger' : '');
-    endBtn.querySelector('.ic').innerHTML = b.deployedAny ? ICON.flag : ICON.home;
-    updateBattleHud();
-  };
+  function speedBtn(el, cls) {
+    setTxt(el.lastElementChild, G.speed + 'x');
+    setAttr(el, 'aria-label', 'Battle speed ' + G.speed + 'x');
+    setClass(el, cls + (G.speed > 1 ? ' fast' : ''));
+  }
+
+  UI.refreshBattle = function () { updateBattleHud(); };
 
   function updateBattleHud() {
     const b = G.battle || G.lastBattle;
-    if (!b) return;
-    const Bt = CS.Battle;
-    const pct = Math.floor(Bt.destruction(b) * 100);
-    if (G.mode === 'raid') {
-      const s = NPC.def(b.targetId);
-      $('bhName').textContent = s.name;
-      $('bhSub').textContent = 'Tier ' + s.tier + ' · ' + NPC.faction(s).name + ' · ' + (b.meta.difficulty || '');
-      let lc = 0, le = 0;
-      b.buildings.forEach(function (c) { if (c.lootLeft) { lc += c.lootLeft.credits; le += c.lootLeft.energy; } });
-      $('bhLoot').innerHTML = '<span class="lbl">Loot taken</span><span class="cost">' + resIcon('credits') + U.fmt(b.loot.credits) + '<small>/ ' + U.fmt(lc + b.loot.credits) + '</small></span><span class="cost">' + resIcon('energy') + U.fmt(b.loot.energy) + '<small>/ ' + U.fmt(le + b.loot.energy) + '</small></span>';
-      $('bhPhase').textContent = b.phase === 'scout' ? 'Scouting: deploy to start' : 'Battle ends in';
-      $('bhTime').textContent = U.clockTime(Bt.timeLeft(b));
-      $('bhPct').textContent = pct + '%';
-      const st = (Bt.destruction(b) >= C.battle.winDestruction ? 1 : 0) + (b.coreDown ? 1 : 0) + (Bt.destruction(b) >= 1 ? 1 : 0);
-      $('bhStars').innerHTML = stars(st);
-      const left = Bt.poolTotal(b);
-      $('bhHint').textContent = b.ended ? '' : b.phase === 'scout' ? 'Look around, pick a troop below, then tap outside the red zone. Hold to deploy a stream of troops.'
-        : left ? 'Destroy 50% of the buildings or the Command Core to win.' : 'All troops deployed.';
+    if (!b || G.mode !== 'raid') return;
+    const Bt = CS.Battle, s = NPC.def(b.targetId), fac = NPC.faction(s);
+    setText('bhName', s.name);
+    setText('bhSub', 'Tier ' + s.tier + ' · ' + fac.name);
+    setHtml($('bhCrest'), CS.Icons.crest(s.faction, fac.color));
+    const d = b.meta.difficulty;
+    setHtml($('bhDiff'), d ? '<b class="d-' + esc(d.toLowerCase()) + '">' + esc(d) + '</b> for your army' : '');
+    // loot taken against what the standing buildings still hold
+    const left = { credits: 0, energy: 0 };
+    b.buildings.forEach(function (c) { if (c.lootLeft) { left.credits += c.lootLeft.credits; left.energy += c.lootLeft.energy; } });
+    Eco.RES.forEach(function (r) {
+      const got = b.loot[r], all = got + left[r];
+      setText('bhGot_' + r, U.fmt(got));
+      setText('bhLeft_' + r, all < 1 ? 'none' : left[r] < 1 ? 'all taken' : U.fmt(left[r]) + ' left');
+      setWidth('bhBar_' + r, all ? got / all : 0);
+    });
+    // the clock stands still while scouting and turns urgent in the last 30 seconds
+    const tl = Bt.timeLeft(b), scout = b.phase === 'scout';
+    setText('bhPhase', b.ended ? 'Battle over' : scout ? 'Scouting' : 'Battle ends in');
+    setText('bhTime', U.clockTime(tl));
+    setText('bhNote', scout && !b.ended ? 'Deploy to start' : '');
+    setClass($('bhClock'), 'bh-clock plaque' + (b.ended ? ' over' : scout ? ' scout' : tl <= 30 ? ' urgent' : ''));
+    const f = Bt.destruction(b);
+    setText('bhPct', pctOf(f) + '%');
+    [f >= C.battle.winDestruction, !!b.coreDown, f >= 1].forEach(function (met, i) {
+      const li = $('bhGoal' + i);
+      if (li.classList.contains('met') === met) return;
+      li.classList.toggle('met', met);
+      li.firstElementChild.innerHTML = ICON[met ? 'star' : 'starOff'];
+    });
+    updateTroops(b);
+    speedBtn($('bhSpeed'), 'mbtn bh-speed');
+    const end = $('bhEnd'), dep = b.deployedAny;
+    setClass(end, 'mbtn' + (dep && !b.ended ? ' danger' : ''));   // a finished battle's button reads as disabled
+    setHtml(end, ic(dep ? 'flag' : 'home') + '<span>' + (dep ? 'End battle' : 'Return home') + '</span>');
+    end.disabled = b.ended;
+    setText('bhHint', b.ended ? '' : scout ? 'Look around, pick a troop, then tap outside the red zone. Hold to deploy a stream of troops.'
+      : Bt.poolTotal(b) ? 'Destroy ' + pctOf(C.battle.winDestruction) + '% of the buildings or the Command Core to win.' : 'All troops deployed.');
+  }
+
+  // One button per troop type brought, numbered like the 1-6 keys. Rebuilt only when that set
+  // changes, so a focused button keeps focus while counts update.
+  function updateTroops(b) {
+    const box = $('bhTroops');
+    const list = C.troopOrder.filter(function (t) { return (b.meta.brought || {})[t] > 0; });
+    if (box.dataset.key !== list.join()) {
+      box.dataset.key = list.join();
+      box.innerHTML = list.map(function (t, i) {
+        return '<button class="tbtn" data-act="troop" data-type="' + t + '" data-tip="' + esc(C.troops[t].name) + ' <kbd>' + (i + 1) + '</kbd>">' +
+          '<kbd>' + (i + 1) + '</kbd><span class="lv"></span>' + troopImg(t, null, 56) + '<b></b></button>';
+      }).join('');
     }
+    Array.prototype.forEach.call(box.children, function (el) {
+      const t = el.dataset.type, n = b.pool[t] || 0, lv = b.troopLv[t] || 1;
+      const on = !b.ended && n > 0 && G.troopSel === t;
+      setClass(el, 'tbtn' + (on ? ' on' : ''));
+      el.disabled = b.ended || !n;
+      setAttr(el, 'aria-pressed', String(on));
+      setAttr(el, 'aria-label', C.troops[t].name + ', ' + n + ' left, level ' + lv);
+      setTxt(el.querySelector('.lv'), 'Lv ' + lv);
+      setTxt(el.querySelector('b'), n);
+    });
+    setText('bhCount', CS.Battle.poolTotal(b));
   }
 
   function defenseHudUpdate() {
     const el = $('defhud');
     const b = G.battle;
     if (G.mode !== 'defense' || !b) { el.classList.add('hidden'); return; }
-    const s = NPC.def(b.attackerId);
-    const alive = b.units.length + b.ai.length;
+    const Bt = CS.Battle, s = NPC.def(b.attackerId), fac = NPC.faction(s), f = Bt.destruction(b);
+    setHtml($('dhCrest'), CS.Icons.crest(s.faction, fac.color));
+    setAttr($('dhWho'), 'data-tip', esc(fac.name) + ' &middot; Tier ' + s.tier);
+    setText('dhKind', b.meta.raidKind === 'retaliation' ? 'Revenge raid' : 'Raid in progress');
+    setText('dhName', s.name);
+    setText('dhTime', U.clockTime(Bt.timeLeft(b)));
+    const dmg = $('dhDmg');
+    setTxt(dmg.firstElementChild, pctOf(f) + '%');
+    setClass(dmg, 'dh-stat' + (f >= C.battle.winDestruction || b.coreDown ? ' bad' : ''));
+    setText('dhLeft', b.units.length + b.ai.length);
+    speedBtn($('dhSpeed'), 'sbtn bh-speed');
+    $('dhSkip').disabled = b.ended;
     el.classList.remove('hidden');
-    $('dhName').textContent = 'Raid by ' + s.name;
-    $('dhInfo').innerHTML = U.clockTime(CS.Battle.timeLeft(b)) + ' &middot; ' + Math.floor(CS.Battle.destruction(b) * 100) + '% damage &middot; ' + alive + ' raiders';
-    $('dhSpeed').querySelector('b').textContent = G.speed + 'x';
   }
+
+  function starRow(n) {
+    let s = '';
+    for (let i = 0; i < 3; i++) s += '<i class="ic' + (i < n ? ' lit' : '') + '" style="--i:' + i + '">' + ICON[i < n ? 'star' : 'starOff'] + '</i>';
+    return '<span class="rs-stars" role="img" aria-label="' + n + ' of 3 stars">' + s + '</span>';
+  }
+
+  // ----- end-of-battle ribbon: the verdict, read from the finished battle, shown until its report opens
+  let ribbon = null, ribbonFor = null, ribbonT = 0;
+  function hideRibbon() {
+    clearTimeout(ribbonT);
+    if (ribbon) ribbon.classList.add('hidden');
+  }
+  CS.Bus.on('ui:open', hideRibbon);
+
+  UI.battleOver = function (b) {
+    if (!b || !b.ended || b === ribbonFor) return;
+    ribbonFor = b;
+    const res = CS.Battle.result(b), pct = pctOf(res.destruction);
+    const raid = b.kind === 'attack', win = raid ? res.victory : !res.victory;
+    const title = raid ? (win ? 'Victory' : 'Defeat') : (win ? 'Raid repelled' : 'Base raided');
+    const sub = raid ? (res.reason === 'wiped' ? RAID_END.wiped : pct + '% destroyed · ' + (RAID_END[res.reason] || 'Battle over'))
+      : pct + '% damage · ' + sumOf(res.lost) + ' of ' + sumOf(res.deployed) + ' raiders defeated';
+    if (!ribbon) {
+      ribbon = document.createElement('div');
+      ribbon.setAttribute('role', 'status');
+      document.body.appendChild(ribbon);
+    }
+    ribbon.className = 'bh-over ' + (win ? 'win' : 'lose');
+    ribbon.innerHTML = (raid ? starRow(res.stars) : ic(win ? 'shield' : 'skull', 'bo-ic')) + '<h2>' + title + '</h2><p>' + esc(sub) + '</p>';
+    clearTimeout(ribbonT);
+    ribbonT = setTimeout(hideRibbon, 2600);   // fallback; opening the report hides it sooner
+  };
 
   // ----- raid results
-  function troopSummary(map, cls) {
-    return C.troopOrder.filter(function (t) { return map[t] > 0; }).map(function (t) {
-      return '<div class="chipT ' + (cls || '') + '">' + troopImg(t, null, 40) + '<b>' + map[t] + '</b></div>';
-    }).join('') || '<span class="muted">none</span>';
+  function troopSummary(res) {
+    const rows = C.troopOrder.filter(function (t) { return res.deployed[t] > 0; }).map(function (t) {
+      const lost = res.lost[t] || 0;
+      return '<tr><td>' + troopImg(t, null, 40) + esc(C.troops[t].name) + '</td><td>' + res.deployed[t] + '</td><td' + (lost ? ' class="bad"' : '') + '>' + lost + '</td></tr>';
+    }).join('');
+    return '<table class="rs-troops"><tr><th></th><th><span class="lbl">Deployed</span></th><th><span class="lbl">Lost</span></th></tr>' + rows + '</table>';
   }
 
+  function cell(label, value) { return '<div><span class="lbl">' + label + '</span><b>' + value + '</b></div>'; }
+
   MODALS.results = function (r) {
-    const res = r.res;
-    const pct = Math.round(res.destruction * 100);
-    const head0 = '<div class="banner ' + (res.victory ? 'win' : 'lose') + '"><h2>' + (res.victory ? 'Victory!' : 'Defeat') + '</h2>' + stars(res.stars) +
-      '<div class="pct">' + pct + '% destroyed</div><div class="muted">' + esc(r.s.name) + ' &middot; ' + res.destroyed + ' of ' + res.total + ' buildings &middot; ' + U.fmtTime(res.seconds) + '</div></div>';
-    const loot = '<div class="rbox"><h4>Loot</h4><div class="big">' + costHtml(r.gained) + '</div>' +
+    const res = r.res, s = r.s, fac = NPC.faction(s), win = res.victory;
+    const loot = Eco.RES.map(function (k) { return '<span class="cost">' + resIcon(k) + (r.gained[k] > 0 ? '+' : '') + U.fmt(r.gained[k]) + '</span>'; }).join('');
+    const notes = r.notes.map(function (n) {
+      const warn = /revenge|counterattack/i.test(n);
+      return '<div class="notice' + (warn ? ' warn' : '') + '">' + ic(warn ? 'warn' : 'info') + '<span>' + esc(n) + '</span></div>';
+    }).join('');
+    const tips = r.tips.length ? '<div class="rs-tips"><h4>Why the raid failed</h4><ul>' + r.tips.map(function (x) { return '<li>' + esc(x) + '</li>'; }).join('') + '</ul></div>' : '';
+    return '<div class="mh"><span class="rs-crest">' + CS.Icons.crest(s.faction, fac.color) + '</span><div class="rs-ht"><h2>' + esc(s.name) + '</h2><small class="rs-tier">Tier ' + s.tier + ' · ' + esc(fac.name) + '</small></div></div>' +
+      '<div class="mbody results"><div class="rs-verdict ' + (win ? 'win' : 'lose') + '"><h3>' + (win ? 'Victory' : 'Defeat') + '</h3>' + starRow(res.stars) +
+      '<p>' + esc(RAID_END[res.reason] || '') + '</p></div>' +
+      '<div class="rs-stats">' + cell('Destroyed', pctOf(res.destruction) + '%') + cell('Buildings', res.destroyed + ' of ' + res.total) +
+      cell('Command Core', res.coreDown ? 'Destroyed' : 'Standing') + cell('Battle time', U.fmtTime(res.seconds)) + '</div>' +
+      '<div class="rs-cols"><section class="rs-box"><h4>Loot gained</h4><div class="rs-loot">' + loot + '</div>' +
       (r.bonus ? '<small>Includes a victory bonus of ' + U.fmt(r.bonus) + ' each.</small>' : '') +
-      (r.wasted > 0 ? '<small class="bad">' + U.fmt(r.wasted) + ' could not be stored. Your storages are full.</small>' : '') + '</div>';
-    const troops = '<div class="rbox"><h4>Troops</h4><div class="trow"><span>Deployed</span>' + troopSummary(res.deployed) + '</div><div class="trow"><span>Lost</span>' + troopSummary(res.lost, 'lost') + '</div>' +
-      '<small>Survivors return to your army.</small></div>';
-    const ren = '<div class="renown ' + (r.renown > 0 ? 'up' : r.renown < 0 ? 'down' : '') + '">' + ic('renown') + (r.renown ? (r.renown > 0 ? '+' : '') + r.renown + ' renown' : 'Renown unchanged') + '</div>';
-    const notes = r.notes.map(function (n) { return '<div class="note">' + ic('warn') + esc(n) + '</div>'; }).join('');
-    const tips = r.tips.length ? '<div class="rbox tips"><h4>Why the raid failed</h4><ul>' + r.tips.map(function (x) { return '<li>' + esc(x) + '</li>'; }).join('') + '</ul></div>' : '';
-    return '<div class="mbody results">' + head0 + '<div class="rgrid">' + loot + troops + '</div>' + ren + notes + tips +
-      '<div class="row end"><button class="mbtn primary" data-act="home">' + ic('home') + '<span>Return home</span></button></div></div>';
+      (r.wasted > 0 ? '<small class="bad">' + U.fmt(r.wasted) + ' could not be stored. Your storages are full.</small>' : '') +
+      '<h4>Renown</h4><div class="rs-renown ' + (r.renown > 0 ? 'up' : r.renown < 0 ? 'down' : '') + '">' + ic('renown') +
+      (r.renown ? (r.renown > 0 ? '+' : '') + r.renown : 'Unchanged') + '</div></section>' +
+      '<section class="rs-box"><h4>Troops</h4>' + troopSummary(res) + '<small>Survivors return to your army.</small></section></div>' + notes + tips + '</div>' +
+      '<div class="rs-foot"><button class="mbtn primary" data-act="home">' + ic('home') + '<span>Return home</span></button></div>';
   };
 
   UI.raidResults = function (r) {
+    hideRibbon();
     UI.open('results', r);
     UI.onClose = function () { if (G.mode === 'raid') G.goHome(); };
+    const home = document.querySelector('#modal [data-act="home"]');
+    if (home) home.focus({ preventScroll: true });
   };
 
   Object.assign(ACT, {
@@ -966,8 +1082,11 @@
     endBattle: function () {
       const b = G.battle;
       if (!b) return;
-      if (b.deployedAny) UI.confirm({ title: 'End the battle?', text: 'Your troops stop fighting and the result is counted now. Survivors come home.', yes: 'End battle', danger: true }, function () { G.endBattle(); });
-      else G.endBattle();
+      if (!b.deployedAny) { G.endBattle(); return; }
+      UI.confirm({ title: 'End the battle?', text: 'Your troops stop fighting and the result is counted now. Survivors come home.', yes: 'End battle', danger: true }, function () {
+        G.endBattle();
+        if (b.ended && b.endReason === 'retreat') UI.battleOver(b);   // main.js skips the ribbon when the player ends a raid
+      });
     },
     skipDefense: function () { G.skipDefense(); },
     home: function () { UI.onClose = null; UI.close(); G.goHome(); }
