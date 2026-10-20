@@ -96,9 +96,11 @@
   R.fitArea = function (size, cx, cy) {
     const I = R.insets;
     const w = Math.max(200, R.W - I.l - I.r), h = Math.max(160, R.H - I.t - I.b);
-    const z = U.clamp(Math.min(w / (size * 64 * 1.02), h / (size * 32 * 1.04 + 70)), 0.45, 1.3);
+    const zw = w / (size * 64 * 1.02), zh = h / (size * 32 * 1.04 + 70);
+    const z = U.clamp(Math.min(zw, zh), 0.45, 1.3);
     R.centerOn(cx == null ? S / 2 : cx, cy == null ? S / 2 : cy, z);
-    R.cam.x -= (I.l - I.r) / 2 / z;
+    // on a narrow phone the area overflows anyway; centering on the whole width loses less of it
+    if (zw >= z) R.cam.x -= (I.l - I.r) / 2 / z;
     R.cam.y -= (I.t - I.b) / 2 / z;
     R.clampCam();
   };
