@@ -34,7 +34,7 @@
 
   G.save = function () {
     const st = G.state;
-    if (!st) return false;
+    if (!st || G.restoring) return false;
     st.battle = G.battle ? Bt.serialize(G.battle) : null;
     const ok = CS.State.save(st, now());
     st.battle = null;
@@ -403,6 +403,55 @@
   G.cancelResearch = function () {
     CS.Research.cancel(G.state);
     toast('Research cancelled. Half of the cost was refunded.', 'info', 'flask');
+    G.save();
+    refresh();
+  };
+
+  // ---------------------------------------------------------------- presets, backups & admin
+  G.applyPreset = function (i) {
+    if (G.mode !== 'village') { toast('Finish the battle first', 'bad', 'warn'); return false; }
+    if (G.place) G.cancelPlace();
+    const r = CS.Presets.apply(G.state, i);
+    if (!r.ok) { toast(r.reason, 'bad', 'warn'); return false; }
+    G.sel = null;
+    G.fit();
+    sfx('build');
+    toast(CS.Presets.STYLES[i].name + ' layout applied', 'good', 'home');
+    G.save();
+    refresh();
+    return true;
+  };
+
+  // The whole game as backup-file text, in the same shape as the browser save.
+  G.backupJson = function () {
+    G.save();
+    const st = G.state;
+    st.battle = G.battle ? Bt.serialize(G.battle) : null;
+    const json = JSON.stringify({ v: C.saveVersion, savedAt: st.savedAt, state: st });
+    st.battle = null;
+    return json;
+  };
+
+  // `json` comes from State.readBackup. Reloading boots the restored save like any other.
+  G.restore = function (json) {
+    G.save();
+    if (!CS.State.restore(json)) { toast('Restoring failed. Storage may be full or blocked.', 'bad', 'warn'); return; }
+    G.restoring = true;            // keeps the closing page from saving over the restored game
+    location.reload();
+  };
+
+  G.cheat = function (key, on) {
+    CS.Admin.set(G.state, key, on);
+    Time.step(G.state, now());
+    G.save();
+    refresh();
+  };
+
+  G.adminAction = function (act) {
+    const st = G.state;
+    if (act === 'maxBase') { CS.Admin.maxBase(st); G.refreshGround(); toast('Every building is now max level', 'good', 'up'); }
+    else if (act === 'fillArmy') toast(CS.Admin.fillArmy(st) + ' troops added', 'good', 'army');
+    else if (act === 'shield') { CS.Admin.shield(st, now()); toast('Shield active for 24 hours', 'good', 'shield'); }
     G.save();
     refresh();
   };
@@ -809,8 +858,8 @@
         const L = Base.levelDef(b.type, b.level);
         info.fill = b.stored / L.buffer;
         if (!bat && Eco.ready(b)) o.bubble = def.produces;
-      } else if (def.stores) info.fill = cap[def.stores] ? st.res[def.stores] / cap[def.stores] : 0;
-      else if (def.storesBoth) info.fill = (st.res.credits + st.res.energy) / Math.max(1, cap.credits + cap.energy);
+      } else if (def.stores) info.fill = cap[def.stores] ? Math.min(1, st.res[def.stores] / cap[def.stores]) : 0;   // the admin's infinite resources overflow storage
+      else if (def.storesBoth) info.fill = Math.min(1, (st.res.credits + st.res.energy) / Math.max(1, cap.credits + cap.energy));
       else if (b.type === 'garrison') { info.troops = units; info.troopTypes = types; }
       else if (b.type === 'lab') info.busy = !!ra;
       else if (b.type === 'station') { info.idle = idle > 0 && !b.ruined; if (info.idle) idle--; }
