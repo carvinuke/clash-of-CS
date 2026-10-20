@@ -255,6 +255,16 @@ raid(CS.NPC.def('glimmerfen'), { lancer: 8, gyro: 6, colossus: 1, ranger: 10 });
   }
 }
 
+// Layout presets keep the short-reach guards (Cinder Brazier, Tempest Coil) close to the Core.
+{
+  let far = [];
+  for (let c = 2; c <= 9; c++) for (let i = 0; i < 3; i++) {
+    const L = CS.Presets.layout(c, i), core = L.find(b => b.type === 'core');
+    L.filter(b => b.type === 'brazier' || b.type === 'tempest').forEach(b => { const d = Math.hypot(b.x + 1 - core.x - 2, b.y + 1 - core.y - 2); if (d > 9) far.push(c + ':' + i + ' ' + b.type + ' ' + d.toFixed(1)); });
+  }
+  ok(!far.length, 'presets place braziers and tempest coils by the core ' + far.join(', '));
+}
+
 // Boss strongholds: each holds its boss defense, never retaliates and pays its reward once.
 {
   for (const def of CS.CONFIG.bosses) {
