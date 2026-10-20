@@ -328,10 +328,10 @@
         hp: [160, 184, 212, 244, 280], dmg: [22, 25, 29, 33, 38], cost: [90, 105, 120, 135, 150]
       },
       gyro: {
-        name: 'Gyrocopter', space: 5, speed: 1.8, range: 0.9, period: 2, target: 'any', time: 24,
-        air: true, splash: 1.1,
+        name: 'Gyrocopter', space: 5, speed: 1.6, range: 0.9, period: 2.2, target: 'any', time: 24,
+        air: true, splash: 0.8,
         desc: 'Rotor craft that flies over walls and drops bombs. Blaster Turrets, Quake Mortars and Shock Mines cannot touch it.',
-        hp: [190, 218, 250, 288, 330], dmg: [44, 50, 58, 66, 76], cost: [350, 400, 460, 520, 580]
+        hp: [160, 184, 212, 244, 280], dmg: [36, 41, 47, 54, 62], cost: [380, 440, 500, 560, 620]
       },
       colossus: {
         name: 'Colossus', space: 18, speed: 0.75, range: 0.9, period: 2.4, target: 'defense', time: 90,
@@ -410,6 +410,7 @@
       winDestruction: 0.5,       // destruction needed for a win (or destroy the Command Core)
       maxSpeed: 3,
       wallBreakPenalty: 30,      // extra path cost (seconds) for walking through non-wall buildings
+      guardRadius: 7,            // defending heroes chase raiders up to this far from their home
       renownWin: [8, 12, 16],    // per star count 1..3 (+2 per tier)
       renownLoss: 6
     },

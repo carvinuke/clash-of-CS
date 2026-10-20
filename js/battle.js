@@ -38,7 +38,8 @@
   /*
    * o: { kind: 'attack'|'defense', seed, biome, name, targetId, attackerId,
    *      buildings: [{id,type,level,x,y,w,h,rot,hp?,func?,loot?}], troops: {type: n},
-   *      troopLevels: {type: lv}, timeLimit (s), maxDestruction, defHpMult, defDmgMult }
+   *      troopLevels: {type: lv}, timeLimit (s), maxDestruction, defHpMult, defDmgMult,
+   *      guards: [{type, lv, x, y}] (heroes defending the home base) }
    */
   B.create = function (o) {
     const b = {
@@ -53,7 +54,7 @@
       limit: Math.round(o.timeLimit * TR),
       maxDestruction: o.maxDestruction || 1,
       phase: o.kind === 'attack' ? 'scout' : 'fight',
-      buildings: [], units: [], proj: [], ai: [],
+      buildings: [], units: [], proj: [], ai: [], guards: [],
       nextId: 1,
       pool: {}, deployed: {}, lost: {},
       deployedAny: false,
@@ -66,6 +67,7 @@
     };
     Object.keys(o.troops || {}).forEach(function (t) { if (o.troops[t] > 0) b.pool[t] = o.troops[t]; });
     o.buildings.forEach(function (s) { addBuilding(b, s, o); });
+    (o.guards || []).forEach(function (g) { addGuard(b, g); });
     b.total = b.buildings.filter(function (c) { return !c.wall && !c.trap; }).length;
     hydrate(b);
     return b;
@@ -101,6 +103,17 @@
       c.cd = Math.floor(rnd(b) * c.atk.period);
     }
     b.buildings.push(c);
+  }
+
+  // A defending hero: stands at its home and fights raiders that come within guardRadius of it.
+  function addGuard(b, g) {
+    const T = C.troops[g.type];
+    const i = U.clamp(g.lv || 1, 1, T.hp.length) - 1;
+    b.guards.push({
+      id: b.nextId++, type: g.type, lv: i + 1, x: g.x, y: g.y, px: g.x, py: g.y, hx: g.x, hy: g.y,
+      hp: T.hp[i], maxHp: T.hp[i], dmg: T.dmg[i], period: Math.max(1, Math.round(T.period * TR)),
+      range: T.range, speed: T.speed * TICK, cd: 0, tgt: 0, dead: false, face: 1, atkT: -999, hitT: -999, dealt: 0
+    });
   }
 
   // ---------------------------------------------------------------- runtime (not saved)
@@ -147,7 +160,8 @@
     return !!s && typeof s === 'object' && s.v === 1 && (s.kind === 'attack' || s.kind === 'defense') &&
       Array.isArray(s.buildings) && Array.isArray(s.units) && Array.isArray(s.proj) && Array.isArray(s.ai) &&
       isFinite(s.tick) && isFinite(s.limit) && s.buildings.every(function (c) { return c && C.buildings[c.type]; }) &&
-      s.units.every(function (u) { return u && C.troops[u.type]; });
+      s.units.every(function (u) { return u && C.troops[u.type]; }) &&
+      (!s.guards || (Array.isArray(s.guards) && s.guards.every(function (g) { return g && C.troops[g.type]; })));
   };
 
   B.restore = function (snap) { return hydrate(snap); };
@@ -160,6 +174,11 @@
 
   B.building = function (b, id) { return b._rt.bById.get(id) || null; };
   B.unit = function (b, id) { return b._rt.units.get(id) || null; };
+  B.guard = function (b, id) {
+    const gs = b.guards || [];
+    for (let i = 0; i < gs.length; i++) if (gs[i].id === id && !gs[i].dead) return gs[i];
+    return null;
+  };
   B.timeLeft = function (b) { return Math.max(0, (b.limit - b.tick) / TR); };
   B.destruction = function (b) { return b.total ? b.destroyed / b.total : 1; };
   B.poolTotal = function (b) {
@@ -390,6 +409,15 @@
     ev(b, { t: 'death', x: u.x, y: u.y, k: u.type });
   }
 
+  function hurtGuard(b, g, dmg) {
+    if (g.dead) return;
+    const dealt = Math.min(g.hp, dmg);
+    g.hp -= dmg;
+    g.hitT = b.tick;
+    ev(b, { t: 'dmg', id: g.id, b: 0, own: 1, k: g.type, x: g.x, y: g.y, n: dealt });
+    if (g.hp <= 0) { g.hp = 0; g.dead = true; ev(b, { t: 'death', x: g.x, y: g.y, k: g.type }); }
+  }
+
   // ---------------------------------------------------------------- troop behaviour
   function bById(b, id) { return b._rt.bById.get(id); }
 
@@ -610,6 +638,64 @@
     }
   }
 
+  function nearestGuard(b, u, r) {
+    let best = null, bd = r;
+    b.guards.forEach(function (g) {
+      if (g.dead) return;
+      const d = U.dist(u.x, u.y, g.x, g.y);
+      if (d <= bd) { bd = d; best = g; }
+    });
+    return best;
+  }
+
+  function fightGuard(b, u, T, g) {
+    u.face = g.x - u.x - (g.y - u.y) >= 0 ? 1 : -1;
+    u.stuck = 0;
+    if (u.cd > 0) return;
+    u.cd = u.period;
+    u.atkT = b.tick;
+    if (T.projectile) {
+      b.proj.push({ id: b.nextId++, k: T.projectile, x: u.x, y: u.y, sx: u.x, sy: u.y, tx: 0, ty: 0, tgt: g.id, tb: 2, dmg: u.dmg, splash: 0, spd: 10 * TICK, t: 0, dur: 0, src: 0 });
+      ev(b, { t: 'shoot', x: u.x, y: u.y, k: T.projectile });
+    } else {
+      hurtGuard(b, g, u.dmg);
+      ev(b, { t: 'hit', x: g.x, y: g.y, k: u.type });
+    }
+  }
+
+  // shortcut: guards walk straight lines through buildings; give them paths if that ever looks wrong.
+  function updateGuard(b, g) {
+    g.px = g.x; g.py = g.y;
+    if (g.cd > 0) g.cd--;
+    const T = C.troops[g.type], R = C.battle.guardRadius;
+    const ok = function (u) { return u && !u.dead && !(u.air && !T.projectile) && U.dist(g.hx, g.hy, u.x, u.y) <= R; };
+    let t = g.tgt ? b._rt.units.get(g.tgt) : null;
+    if (!ok(t)) {
+      t = null;
+      let bd = Infinity;
+      b.units.forEach(function (u) {
+        if (!ok(u)) return;
+        const d = U.dist(g.x, g.y, u.x, u.y);
+        if (d < bd) { bd = d; t = u; }
+      });
+      g.tgt = t ? t.id : 0;
+    }
+    if (!t) { if (U.dist(g.x, g.y, g.hx, g.hy) > 0.2) moveToward(g, g.hx, g.hy); return; }
+    if (U.dist(g.x, g.y, t.x, t.y) > g.range + 0.1) { moveToward(g, t.x, t.y); return; }
+    g.face = t.x - g.x - (t.y - g.y) >= 0 ? 1 : -1;
+    if (g.cd > 0) return;
+    g.cd = g.period;
+    g.atkT = b.tick;
+    g.dealt += Math.min(t.hp, g.dmg);
+    if (T.projectile) {
+      b.proj.push({ id: b.nextId++, k: T.projectile, x: g.x, y: g.y, sx: g.x, sy: g.y, tx: 0, ty: 0, tgt: t.id, tb: 0, dmg: g.dmg, splash: 0, spd: 10 * TICK, t: 0, dur: 0, src: 0 });
+      ev(b, { t: 'shoot', x: g.x, y: g.y, k: T.projectile });
+    } else {
+      hurtUnit(b, t, g.dmg, null);
+      ev(b, { t: 'hit', x: t.x, y: t.y, k: g.type });
+    }
+  }
+
   // The War Cry aura: while it lasts, every troop within its radius (the Marshal included) is rallied.
   function rally(b, u) {
     u.abT--;
@@ -630,6 +716,11 @@
     if (u.abT > 0) rally(b, u);
     const T = C.troops[u.type];
     if (T.target === 'troop') { updateMender(b, u, T); return; }
+    // ground raiders fight back against a defending hero within reach (flyers and bombers ignore it)
+    if (!T.air && !T.suicide && b.guards && b.guards.length) {
+      const gd = nearestGuard(b, u, u.range + 0.4);
+      if (gd) { fightGuard(b, u, T, gd); return; }
+    }
     if (T.air) {
       // flyers ignore walls and paths: straight to the target, hovering over it while they bomb
       let t = u.tgt ? bById(b, u.tgt) : null;
@@ -775,17 +866,20 @@
           ev(b, { t: 'boom', x: p.tx, y: p.ty, r: p.splash, k: 'shell' });
         }
       } else {
-        const target = p.tb ? bById(b, p.tgt) : b._rt.units.get(p.tgt);
+        // tb: 1 = building, 2 = defending hero, 0 = attacking troop
+        const bld = p.tb === 1;
+        const target = bld ? bById(b, p.tgt) : p.tb === 2 ? B.guard(b, p.tgt) : b._rt.units.get(p.tgt);
         if (!target || target.dead) keep = false;
         else {
-          const tx = p.tb ? target.x + target.w / 2 : target.x;
-          const ty = p.tb ? target.y + target.h / 2 : target.y;
+          const tx = bld ? target.x + target.w / 2 : target.x;
+          const ty = bld ? target.y + target.h / 2 : target.y;
           const dx = tx - p.x, dy = ty - p.y;
           const d = Math.sqrt(dx * dx + dy * dy);
-          const reach = p.tb ? Math.min(target.w, target.h) * 0.4 : 0.05;
+          const reach = bld ? Math.min(target.w, target.h) * 0.4 : 0.05;
           if (d <= p.spd + reach) {
             keep = false;
-            if (p.tb) {
+            if (p.tb === 2) hurtGuard(b, target, p.dmg);
+            else if (bld) {
               if (p.splash) {
                 b.buildings.forEach(function (c) {
                   if (!c.dead && !c.trap && U.distToRect(p.x, p.y, c.x, c.y, c.w, c.h) <= p.splash) hurtBuilding(b, c, p.dmg);
@@ -881,6 +975,8 @@
     if (b.ai.length) runAI(b);
     const units = b.units;
     for (let i = 0; i < units.length; i++) if (!units[i].dead) updateUnit(b, units[i]);
+    const gs = b.guards || [];
+    for (let i = 0; i < gs.length; i++) if (!gs[i].dead) updateGuard(b, gs[i]);
     const bl = b.buildings;
     for (let i = 0; i < bl.length; i++) if (bl[i].atk && !bl[i].dead) updateDefense(b, bl[i]);
     updateProjectiles(b);
@@ -924,7 +1020,8 @@
       coreDown: b.coreDown, loot: { credits: Math.floor(b.loot.credits), energy: Math.floor(b.loot.energy) },
       lost: Object.assign({}, b.lost), deployed: Object.assign({}, b.deployed), survived: survived,
       destroyed: b.destroyed, total: b.total, reason: b.endReason, seconds: b.tick / TR,
-      dmg: Object.assign({}, b.stats.dmg), heroHp: heroHp
+      dmg: Object.assign({}, b.stats.dmg), heroHp: heroHp,
+      guards: (b.guards || []).map(function (g) { return { type: g.type, hp: g.hp / g.maxHp, dealt: Math.round(g.dealt) }; })
     };
   };
 

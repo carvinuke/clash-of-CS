@@ -629,7 +629,7 @@
     else if (hs.code === 'ruined') status = why('The ' + home.name + ' is in ruins. Repair it first.', 'busy', 'wrench');
     else if (hs.code === 'upgrading') status = why('Away while the ' + home.name + ' is upgrading', 'busy', 'hammer');
     else if (hs.code === 'resting') status = '<span class="tk-meta"><span class="time">' + ic('clock') + 'Resting, ready in&nbsp;<b>' + until(CS.Clock.now() + hs.left * 1000) + '</b></span></span>';
-    else status = '<span class="why hero-ok">' + ic('check') + '<span>Ready. Joins every raid automatically.</span></span>';
+    else status = '<span class="why hero-ok">' + ic('check') + '<span>Ready. Joins every raid and guards your base.</span></span>';
     return '<div class="tcard' + (lv ? '' : ' locked') + '" data-tip="' + esc(T.desc) + '">' +
       '<span class="tk-art">' + troopImg(h, null, 72) + '</span>' +
       '<div class="tk-main"><div class="tk-head"><b class="tk-name">' + esc(T.name) + '</b>' + (lv ? '<span class="lv">Lv ' + lv + '</span>' : '') + '</div>' +
@@ -1158,7 +1158,11 @@
       '<div><span class="lbl">Raiders defeated</span><b>' + rep.killed + ' / ' + rep.raiders + '</b></div>' +
       '<div><span class="lbl">Stolen</span><b>' + (rep.stolen.credits + rep.stolen.energy ? costHtml(rep.stolen) : 'Nothing') + '</b></div>' +
       '<div><span class="lbl">Renown</span><b class="' + (rep.renown > 0 ? 'good' : rep.renown < 0 ? 'bad' : '') + '">' + (rep.renown > 0 ? '+' : '') + rep.renown + '</b></div></div>' +
-      (lost ? '<div class="dr-line"><span class="lbl">Destroyed</span><span>' + lost + '</span></div>' : '') + top + '</div>';
+      (lost ? '<div class="dr-line"><span class="lbl">Destroyed</span><span>' + lost + '</span></div>' : '') + top +
+      (rep.heroes || []).map(function (g) {
+        return '<div class="dr-line"><span class="lbl">Hero</span><span class="dr-top">' + troopImg(g.type, null, 40) + esc(C.troops[g.type].name) +
+          '<small>' + U.fmt(g.dealt) + ' damage &middot; ' + (g.hp <= 0 ? 'fell, now resting' : g.hp < 1 ? 'wounded, now resting' : 'unhurt') + '</small></span></div>';
+      }).join('') + '</div>';
   }
 
   MODALS.defense = function (rep) {

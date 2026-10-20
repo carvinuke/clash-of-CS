@@ -882,17 +882,28 @@
         targeted: !!threatened && threatened.has(u.id)
       });
     });
+    // heroes defending the home base
+    (b.guards || []).forEach(function (g) {
+      if (g.dead) return;
+      const since = b.tick - g.atkT;
+      scene.units.push({
+        id: g.id, type: g.type, team: TEAM, x: g.px + (g.x - g.px) * a, y: g.py + (g.y - g.py) * a,
+        face: g.face, idle: Math.abs(g.x - g.px) + Math.abs(g.y - g.py) <= 1e-4, atk: since < 9 ? since / 9 : null,
+        hit: b.tick - g.hitT < 3, lv: g.lv, skin: 0, hp: g.hp, maxHp: g.maxHp, enemy: false
+      });
+    });
     b.proj.forEach(function (p) {
       if (p.k === 'shell') { scene.projectiles.push({ k: 'shell', x: p.x, y: p.y, f: p.dur ? p.t / p.dur : 1 }); return; }
-      const tgt = p.tb ? Bt.building(b, p.tgt) : Bt.unit(b, p.tgt);
+      const bld = p.tb === 1;
+      const tgt = bld ? Bt.building(b, p.tgt) : p.tb === 2 ? Bt.guard(b, p.tgt) : Bt.unit(b, p.tgt);
       if (!tgt) return;
-      const tx = p.tb ? tgt.x + tgt.w / 2 : tgt.x, ty = p.tb ? tgt.y + tgt.h / 2 : tgt.y;
+      const tx = bld ? tgt.x + tgt.w / 2 : tgt.x, ty = bld ? tgt.y + tgt.h / 2 : tgt.y;
       const done = U.dist(p.sx, p.sy, p.x, p.y), left = U.dist(p.x, p.y, tx, ty);
       const shot = SHOT[p.k] || SHOT.arrow;
       if (done < shot.hide) return;          // still inside the weapon that fired it
       const total = done + left;
       const f = total > 0 ? done / total : 1;
-      const z0 = shot.z, z1 = p.tb ? (TOP[tgt.type] || 30) * 0.45 : 10;
+      const z0 = shot.z, z1 = bld ? (TOP[tgt.type] || 30) * 0.45 : 10;
       const d = left || 1;
       scene.projectiles.push({ k: p.k, x: p.x, y: p.y, z: z0 + (z1 - z0) * f, dx: (tx - p.x) / d * 0.5, dy: (ty - p.y) / d * 0.5, dz: total > 0 ? (z0 - z1) / total * 0.5 : 0 });
     });
@@ -970,7 +981,7 @@
         case 'dmg': {
           // damage to the player's side reads red; damage the player deals reads cream
           // numbers sit beside the target, not over its health bar: damage to the right, loot to the left
-          const mine = home ? e.b : !e.b;
+          const mine = e.own || (home ? e.b : !e.b);
           const z = e.b ? (TOP[e.k] || 30) * 0.45 + 6 : 30;
           if (e.b) R.damage('b' + e.id, e.x + 0.45, e.y - 0.15, z, e.n, mine ? HURT : HIT, '');
           else R.damage('u' + e.id, e.x + 0.2, e.y - 0.2, z, e.n, mine ? HURT : HIT, '');

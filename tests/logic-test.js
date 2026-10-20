@@ -109,7 +109,7 @@ raid(CS.NPC.def('glimmerfen'), { lancer: 8, gyro: 6, colossus: 1, ranger: 10 });
 
 // Flying troops: a Blaster Turret (ground only) never hurts a Gyrocopter; a Sentry Spire does.
 {
-  const mk = type => CS.Battle.create({ kind: 'attack', seed: 3, timeLimit: 60, troops: { gyro: 2 }, troopLevels: {},
+  const mk = type => CS.Battle.create({ kind: 'attack', seed: 3, timeLimit: 150, troops: { gyro: 2 }, troopLevels: {},
     buildings: [{ id: 1, type: 'core', level: 1, x: 20, y: 20, w: 4, h: 4 }, { id: 2, type, level: 3, x: 14, y: 21, w: 3, h: 3 }] });
   for (const type of ['blaster', 'spire']) {
     const b = mk(type);
@@ -151,6 +151,26 @@ raid(CS.NPC.def('glimmerfen'), { lancer: 8, gyro: 6, colossus: 1, ranger: 10 });
   ok(CS.Army.heroReady(h, 'marshal', now + 151000), 'Marshal ready after resting');
   hall.status = 'upgrading';
   ok(CS.Army.heroStatus(h, 'marshal', now + 999999).code === 'upgrading', 'hero away while its hall upgrades');
+}
+
+// Heroes defend the home base: they guard their platform, fight raiders and rest afterwards.
+{
+  const h = CS.State.newGame(now);
+  h.base.buildings.find(b => b.type === 'core').level = 3;
+  const sp = CS.Base.findFreeSpot(h, 'hall', 0, 22, 22);
+  CS.Base.newBuilding(h, 'hall', sp.x, sp.y, 0, 3, 'active');
+  const b = CS.Threat.buildDefense(h, { attackerId: 'sandscar-den', kind: 'random' }, now);
+  ok(b.guards.length === 1 && b.guards[0].type === 'marshal', 'ready Marshal stands guard in a defense');
+  const snap = CS.Battle.restore(JSON.parse(JSON.stringify(CS.Battle.serialize(b))));
+  CS.Battle.runToEnd(b); CS.Battle.runToEnd(snap);
+  const res = CS.Battle.result(b);
+  ok(JSON.stringify(res) === JSON.stringify(CS.Battle.result(snap)), 'defense with a guard restores deterministically');
+  ok(res.guards[0].dealt > 0, 'Marshal hurt the raiders: ' + JSON.stringify(res.guards[0]));
+  const rep = CS.Threat.applyDefense(h, b, now);
+  const st = CS.Army.heroStatus(h, 'marshal', now);
+  ok(rep.heroes.length === 1 && (res.guards[0].hp < 1 ? st.code === 'resting' : st.code === 'ready'), 'hero rest follows the defense (' + st.code + ')');
+  const b2 = CS.Threat.buildDefense(h, { attackerId: 'sandscar-den', kind: 'random' }, now);
+  ok(b2.guards.length === (st.code === 'ready' ? 1 : 0), 'a resting hero does not defend');
 }
 
 // Serialization round trip mid-battle

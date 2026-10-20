@@ -650,7 +650,7 @@ body:has(#threat.show) #panel { top: 154px; max-height: calc(100vh - 154px - 90p
 .dr-line { display: flex; align-items: baseline; gap: 10px; color: var(--cream-2); font-size: var(--fs-small); line-height: 1.4; }
 .dr-line .lbl { flex: none; width: 104px; }
 .dr-top { display: inline-flex; align-items: center; gap: 6px; }
-.dr-top .thumb { width: 26px; height: 26px; margin: -6px 0; }
+.dr-top :is(.thumb, .tthumb) { width: 26px; height: 26px; margin: -6px 0; }
 .dr-top small { color: var(--cream-3); }
 .dreport.compact { gap: 8px; padding: 10px; }
 .dreport.compact .dr-grid b { font-size: var(--fs-md); }
