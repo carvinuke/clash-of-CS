@@ -114,8 +114,8 @@
         hp: Math.max(1, maxHp - (b.dmg || 0)), func: Base.isFunctional(b), loot: null
       };
       if (def.produces && b.stored >= 1) collectors[def.produces].push({ o: o, amt: b.stored });
-      if ((def.stores || b.type === 'core') && b.level >= 1) {
-        if (b.type === 'core') { holders.credits.push(o); holders.energy.push(o); }
+      if ((def.stores || def.storesBoth || b.type === 'core') && b.level >= 1) {
+        if (!def.stores) { holders.credits.push(o); holders.energy.push(o); }
         else holders[def.stores].push(o);
       }
       list.push(o);
@@ -123,7 +123,8 @@
     ['credits', 'energy'].forEach(function (r) {
       const pool = Math.min(cap, state.res[r] * steal.storageFraction);
       const weights = holders[r].map(function (o) {
-        return o.type === 'core' ? Base.levelDef('core', o.level).store : Base.levelDef(o.type, o.level).capacity;
+        const L = Base.levelDef(o.type, o.level);
+        return L.capacity || L.store;
       });
       const wsum = weights.reduce(function (a, b) { return a + b; }, 0);
       holders[r].forEach(function (o, i) {

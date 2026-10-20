@@ -1118,17 +1118,85 @@
     return null;
   };
 
-  // Walls: 1 palisade, 2 fieldstone, 3 sandstone, 4 banded granite, 5 steel, 6 obsidian and gold.
+  // Anti-air pit: a squat armoured emplacement; the twin guns are drawn live so they can aim.
+  DRAW.flak = function (g, w, h, lv, team, rng) {
+    const t = tierOf(lv, 5), plate = [MAT.stoneCool, MAT.steel, '#7d8894'][t];
+    block(g, rng, 0.2, 0.2, 2.8, 2.8, 0, 6, MAT.stoneDark, { tex: 'stone', course: 3, block: 12 });
+    block(g, rng, 0.45, 0.45, 2.55, 2.55, 6, 13, plate, { tex: t ? 'metal' : 'stone', block: 12, top: shade(plate, TOP - 0.08) });
+    ['L', 'R'].forEach(function (s) {
+      onFace(g, s, 0.45, 0.45, 2.55, 2.55, 6, 13, function (c, len, ht) {
+        for (let x = 3; x < len - 3; x += 8) { c.fillStyle = x % 16 < 8 ? team : '#2d2f33'; c.fillRect(x, -ht + 2, 5, 2.4); }
+      });
+    });
+    // ammunition crates in the corners
+    [[0.62, 2.1], [2.1, 0.62]].forEach(function (q) { block(g, rng, q[0], q[1], q[0] + 0.3, q[1] + 0.3, 13, 17, MAT.plank, { tex: 'plank' }); });
+    cyl(g, rng, 1.5, 1.5, 0.78, 13, 16, MAT.iron, { top: shade(MAT.iron, 0.25) });
+    if (t === 2) cyl(g, rng, 1.5, 1.5, 0.84, 12, 13.5, MAT.gold, { top: false });
+    return null;
+  };
+
+  // Rail gun bastion: a dressed-stone redoubt with copper coils; the barrel is drawn live.
+  DRAW.rail = function (g, w, h, lv, team, rng) {
+    const t = tierOf(lv, 4), stone = t ? MAT.dressed : MAT.stone;
+    block(g, rng, 0.12, 0.12, 2.88, 2.88, 0, 8, MAT.stoneDark, { tex: 'stone', course: 4, block: 12 });
+    block(g, rng, 0.38, 0.38, 2.62, 2.62, 8, 24, stone, { tex: 'dressed', course: 6, block: 14, top: shade(stone, TOP - 0.1) });
+    ['L', 'R'].forEach(function (s) {
+      onFace(g, s, 0.38, 0.38, 2.62, 2.62, 8, 24, function (c, len, ht) {
+        c.fillStyle = shade(MAT.copper, s === 'L' ? FL : FR); c.fillRect(0, -ht * 0.55 - 1.5, len, 3);
+        c.fillStyle = alpha(team, 0.9); c.fillRect(len / 2 - 6, -ht + 2, 12, 3);
+      });
+    });
+    [[0.6, 0.6], [2.4, 0.6], [0.6, 2.4], [2.4, 2.4]].forEach(function (q) {
+      for (let k = 0; k < 3; k++) cyl(g, rng, q[0], q[1], 0.16, 24 + k * 3, 26 + k * 3, k % 2 ? shade(MAT.copper, 0.2) : MAT.copper, {});
+    });
+    if (t === 2) block(g, rng, 0.36, 0.36, 2.64, 2.64, 22, 24, MAT.gold, { top: false });
+    return null;
+  };
+
+  DRAW.snare = function (g, w, h, lv, team, rng) {
+    disk(g, 0.5, 0.5, 0.5, 0.34, '#4a463f', EDGE);
+    cyl(g, rng, 0.5, 0.5, 0.22, 0.5, 4, '#6b6458', {});
+    beam(g, [0.5, 0.5, 4], [0.42, 0.42, 9], 2.6, MAT.brass);
+    return null;
+  };
+
+  // Reserve Bunker: thick poured-stone strongroom with a riveted steel door; stock shows live on the roof.
+  DRAW.bunker = function (g, w, h, lv, team, rng) {
+    const t = tierOf(lv, 3), slab = t === 2 ? '#8d939b' : MAT.stoneCool;
+    block(g, rng, 0.1, 0.1, 2.9, 2.9, 0, 5, MAT.stoneDark, { tex: 'stone', course: 3, block: 14 });
+    block(g, rng, 0.3, 0.3, 2.7, 2.7, 5, 28, slab, { tex: 'stone', course: 9, block: 20, top: shade(slab, TOP - 0.06) });
+    onFace(g, 'L', 0.3, 0.3, 2.7, 2.7, 5, 28, function (c, len, ht) {
+      c.fillStyle = '#5d646d'; c.fillRect(len / 2 - 9, -17, 18, 17);
+      c.strokeStyle = INKLINE; c.lineWidth = 1; c.strokeRect(len / 2 - 9, -17, 18, 17);
+      c.fillStyle = MAT.steel; for (let y = -15; y < 0; y += 4) { c.fillRect(len / 2 - 7.5, y, 1.2, 1.2); c.fillRect(len / 2 + 6.3, y, 1.2, 1.2); }
+      c.beginPath(); c.arc(len / 2, -8.5, 3.6, 0, Math.PI * 2); c.strokeStyle = MAT.brass; c.lineWidth = 1.4; c.stroke();
+      c.fillStyle = team; c.fillRect(4, -ht + 3, len - 8, 2.4);
+    });
+    onFace(g, 'R', 0.3, 0.3, 2.7, 2.7, 5, 28, function (c, len, ht) {
+      c.fillStyle = shade(MAT.iron, FR); c.fillRect(0, -ht * 0.4 - 1.5, len, 3);
+      c.fillStyle = team; c.fillRect(4, -ht + 3, len - 8, 2.4);
+    });
+    block(g, rng, 0.22, 0.22, 2.78, 2.78, 28, 31, shade(slab, -0.1), { top: shade(slab, TOP - 0.12) });
+    if (t >= 1) [[0.34, 0.34], [2.66, 0.34], [0.34, 2.66], [2.66, 2.66]].forEach(function (q) { cyl(g, rng, q[0], q[1], 0.1, 31, 34, t === 2 ? MAT.gold : MAT.brass, {}); });
+    return null;
+  };
+
+  // Walls: 1 palisade, 2 fieldstone, 3 sandstone, 4 banded granite, 5 steel, 6 obsidian and gold,
+  // 7 bronze-banded basalt, 8 glazed jade stone, 9 sunstone with a white-gold glow.
+
   const WALL = [null,
     { col: '#9b6a3e', H: 17 },
     { col: '#a39b8d', tex: 'stone', H: 16 },
     { col: MAT.sandstone, tex: 'stone', H: 18 },
     { col: '#8f949b', tex: 'stone', H: 20, band: MAT.iron },
     { col: '#9aa6b2', tex: 'metal', H: 21, cap: MAT.brass },
-    { col: MAT.obsidian, tex: 'dressed', H: 22, cap: MAT.gold, glow: '#b67cff' }];
+    { col: MAT.obsidian, tex: 'dressed', H: 22, cap: MAT.gold, glow: '#b67cff' },
+    { col: '#55524f', tex: 'dressed', H: 23, band: MAT.copper, cap: MAT.copper },
+    { col: '#5f9a84', tex: 'dressed', H: 24, band: MAT.gold, cap: MAT.gold },
+    { col: '#efd9a4', tex: 'dressed', H: 25, band: MAT.gold, cap: MAT.gold, glow: '#fff3c4' }];
   Spr.WALL = WALL;
   function drawWall(g, rng, lv, mask) {
-    const W = WALL[U.clamp(lv, 1, 6)], H = W.H;
+    const W = WALL[U.clamp(lv, 1, WALL.length - 1)], H = W.H;
     if (lv <= 1) {
       const st = [[0.36, 0.42], [0.62, 0.36], [0.5, 0.62]];
       if (mask & 1) st.push([0.86, 0.5], [1.1, 0.5]);
@@ -1173,7 +1241,8 @@
     tank: [MAT.brass, MAT.steel], barracks: [MAT.plaster, MAT.timber], garrison: [MAT.canvas, MAT.plank], lab: [MAT.stone, MAT.verdigris],
     station: [MAT.plank, MAT.timber], blaster: [MAT.stone, MAT.iron], spire: [MAT.stone, MAT.timber], mortar: [MAT.burlap, MAT.iron],
     frost: [MAT.ice, MAT.stoneCool], lance: [MAT.steel, MAT.copper], mine: [MAT.iron, MAT.iron],
-    hall: [MAT.stone, MAT.brass], lodge: [MAT.plank, MAT.canvas]
+    hall: [MAT.stone, MAT.brass], lodge: [MAT.plank, MAT.canvas],
+    flak: [MAT.stoneCool, MAT.iron], rail: [MAT.dressed, MAT.copper], snare: [MAT.iron, MAT.brass], bunker: [MAT.stoneCool, MAT.steel]
   };
   // Drawn under the inked rubble, so the translucent mark never picks up the ink outline.
   // One path per tone, so overlapping blobs read as a single even scorch.
@@ -1192,7 +1261,7 @@
   }
 
   function drawRuin(g, w, h, rng, type, level) {
-    const m = type === 'wall' ? [WALL[U.clamp(level, 1, 6)].col, MAT.stoneDark] : RUIN[type] || [MAT.stone, MAT.timber];
+    const m = type === 'wall' ? [WALL[U.clamp(level, 1, WALL.length - 1)].col, MAT.stoneDark] : RUIN[type] || [MAT.stone, MAT.timber];
     const big = w > 1;
     if (big) {
       // a broken corner of wall at the back
@@ -1243,9 +1312,9 @@
   }
 
   // ---------------------------------------------------------------- sprite cache
-  const ZMAX = { core: 112, spire: 118, lance: 62, well: 86, tank: 60, lab: 94, mint: 66, barracks: 56, garrison: 66, station: 52, blaster: 26, mortar: 46, frost: 66, vault: 42, mine: 8, wall: 34, hall: 62, lodge: 52 };
+  const ZMAX = { core: 112, spire: 118, lance: 62, well: 86, tank: 60, lab: 94, mint: 66, barracks: 56, garrison: 66, station: 52, blaster: 26, mortar: 46, frost: 66, vault: 42, mine: 8, wall: 34, hall: 62, lodge: 52, flak: 24, rail: 36, snare: 12, bunker: 40 };
   // Visual height of each building's main mass (for picking, bars and projectile impacts).
-  Spr.TOP = { core: 100, spire: 74, lance: 60, well: 72, tank: 58, lab: 82, mint: 47, barracks: 48, garrison: 32, station: 40, blaster: 28, mortar: 24, frost: 56, vault: 39, mine: 8, wall: 22, hall: 36, lodge: 34 };
+  Spr.TOP = { core: 100, spire: 74, lance: 60, well: 72, tank: 58, lab: 82, mint: 47, barracks: 48, garrison: 32, station: 40, blaster: 28, mortar: 24, frost: 56, vault: 39, mine: 8, wall: 22, hall: 36, lodge: 34, flak: 30, rail: 38, snare: 8, bunker: 31 };
   const PAD = 8;
   const cache = new Map();
 
@@ -1334,10 +1403,14 @@
     lance: function () { return [['b', 0.3, 0.3, 2.7, 2.7, 12, 1], ['c', 1.5, 1.5, 0.45, 60]]; },
     mine: function () { return [['c', 0.5, 0.5, 0.3, 2, 1]]; },
     hall: function () { return [['b', 0.15, 0.15, 2.85, 2.85, 10, 1], ['c', 0.5, 1.2, 0.24, 28], ['c', 1.2, 0.5, 0.24, 28], ['l', 0.45, 0.45, 5, 0.45, 0.45, 56, 0.06]]; },
-    lodge: function () { return [['b', 0.15, 0.15, 2.85, 2.85, 4, 1], ['b', 0.3, 0.3, 1.4, 1.4, 34], ['c', 2.35, 0.7, 0.3, 14], ['l', 0.35, 2.65, 4, 0.35, 2.65, 46, 0.06]]; }
+    lodge: function () { return [['b', 0.15, 0.15, 2.85, 2.85, 4, 1], ['b', 0.3, 0.3, 1.4, 1.4, 34], ['c', 2.35, 0.7, 0.3, 14], ['l', 0.35, 2.65, 4, 0.35, 2.65, 46, 0.06]]; },
+    flak: function () { return [['b', 0.2, 0.2, 2.8, 2.8, 13, 1], ['c', 1.5, 1.5, 0.6, 30]]; },
+    rail: function () { return [['b', 0.12, 0.12, 2.88, 2.88, 8, 1], ['b', 0.38, 0.38, 2.62, 2.62, 34]]; },
+    snare: function () { return [['c', 0.5, 0.5, 0.3, 4, 1]]; },
+    bunker: function () { return [['b', 0.1, 0.1, 2.9, 2.9, 31, 1]]; }
   };
   function wallVol(lv, mask) {
-    const H = WALL[U.clamp(lv, 1, 6)].H;
+    const H = WALL[U.clamp(lv, 1, WALL.length - 1)].H;
     const v = [['b', 0.24, 0.24, 0.76, 0.76, H + 4, 1]];
     if (mask & 1) v.push(['b', 0.76, 0.3, 1.24, 0.7, H, 1]);
     if (mask & 2) v.push(['b', 0.3, 0.76, 0.7, 1.24, H, 1]);
@@ -1442,6 +1515,12 @@
         const c = P(2, 2, z);
         glowDot(ctx, c[0], c[1], 22, alpha(team, 0.5), alpha(team, 0));
         gem(ctx, c[0], c[1], 7.5, 12.5, team);
+        // Command Core Lv 7+: one orbiting shard per level past 6
+        for (let i = 0; i < (b.level || 0) - 6; i++) {
+          const a = time * 1.4 + i * Math.PI * 2 / ((b.level || 0) - 6);
+          const s = P(2 + Math.cos(a) * 0.62, 2 + Math.sin(a) * 0.62, z - 6);
+          gem(ctx, s[0], s[1], 3, 5.5, i % 2 ? MAT.gold : team);
+        }
         break;
       }
       case 'mint': {
@@ -1713,6 +1792,59 @@
         }
         break;
       }
+      case 'flak': {
+        // twin anti-air guns on a turntable, barrels raised toward the sky
+        const ang = info.angle || 0, recoil = info.recoil || 0, dx = Math.cos(ang), dy = Math.sin(ang);
+        prism(ctx, rotRect(1.5, 1.5, ang, 0.9, 0.8), 16, 23, '#59606a', { top: shade('#59606a', TOP) });
+        const guns = function () {
+          [-0.2, 0.2].forEach(function (s) {
+            const base = P(1.5 - dy * s, 1.5 + dx * s, 25);
+            const len = 0.55 - recoil * 0.12;
+            const tip = P(1.5 + dx * len - dy * s, 1.5 + dy * len + dx * s, 50 - recoil * 4);
+            tube(ctx, base, tip, 5.2, '#3a4048');
+            ctx.beginPath(); ctx.arc(tip[0], tip[1], 3, 0, Math.PI * 2); ctx.fillStyle = '#16181b'; ctx.fill(); ctx.strokeStyle = INKLINE; ctx.lineWidth = 0.8; ctx.stroke();
+          });
+        };
+        const hub = P(1.5, 1.5, 25);
+        const shield = function () {
+          ctx.beginPath(); ctx.arc(hub[0], hub[1], 6.5, 0, Math.PI * 2); ctx.fillStyle = team; ctx.fill(); ctx.strokeStyle = INKLINE; ctx.lineWidth = 0.9; ctx.stroke();
+        };
+        if (dx + dy < 0) { guns(); shield(); } else { shield(); guns(); }
+        break;
+      }
+      case 'rail': {
+        // twin rails on a carriage; a charge glows between them while the coils build up
+        const ang = info.angle || 0, recoil = info.recoil || 0, dx = Math.cos(ang), dy = Math.sin(ang);
+        prism(ctx, rotRect(1.5, 1.5, ang, 1.1, 0.9), 24, 32, '#4d545d', { top: shade('#4d545d', TOP) });
+        const back = 0.55 + recoil * 0.2, len = 1.6 - recoil * 0.3;
+        const rails = function () {
+          [-0.14, 0.14].forEach(function (s) {
+            tube(ctx, P(1.5 - dx * back - dy * s, 1.5 - dy * back + dx * s, 36), P(1.5 + dx * len - dy * s, 1.5 + dy * len + dx * s, 38), 3.6, s < 0 ? '#2f343b' : '#3d434b');
+          });
+        };
+        const glow = function () {
+          const c = P(1.5 + dx * 0.4, 1.5 + dy * 0.4, 37), k = recoil ? 1 : 0.45 + Math.sin(time * 5) * 0.2;
+          glowDot(ctx, c[0], c[1], 9, 'rgba(200,240,255,' + k + ')', 'rgba(120,200,255,0)');
+          ctx.beginPath(); ctx.arc(P(1.5, 1.5, 36)[0], P(1.5, 1.5, 36)[1], 4.4, 0, Math.PI * 2); ctx.fillStyle = team; ctx.fill(); ctx.strokeStyle = INKLINE; ctx.lineWidth = 0.8; ctx.stroke();
+        };
+        if (dx + dy < 0) { rails(); glow(); } else { glow(); rails(); }
+        break;
+      }
+      case 'bunker': {
+        // stacked stock on the roof: gold bars at the front-left, energy cells at the back-right
+        const fill = info.fill || 0;
+        const n = Math.min(4, Math.ceil(fill * 4));
+        for (let i = 0; i < n; i++) {
+          const u = 0.75 + i * 0.36;
+          block(ctx, null, u, 1.75, u + 0.28, 2.05, 31, 35, MAT.gold, { top: '#ffe27a' });
+          cyl(ctx, null, u + 0.14, 1.05, 0.12, 31, 37, MAT.energy, { top: MAT.energyLight });
+        }
+        const l = P(1.5, 2.7, 25), on = Math.sin(time * 2) > 0;
+        ctx.fillStyle = on ? 'rgba(255,207,110,0.95)' : 'rgba(255,207,110,0.45)';
+        ctx.beginPath(); ctx.arc(l[0], l[1], 1.6, 0, Math.PI * 2); ctx.fill();
+        break;
+      }
+      case 'snare':
       case 'mine': {
         if (info.hidden) break;
         const p = P(0.5, 0.5, 4);

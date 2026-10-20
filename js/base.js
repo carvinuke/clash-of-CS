@@ -54,7 +54,7 @@
   };
 
   Base.maxCount = function (type, coreLevel) {
-    return C.buildings[type].max[U.clamp(coreLevel, 1, 6) - 1] || 0;
+    return C.buildings[type].max[U.clamp(coreLevel, 1, C.buildings.core.levels.length) - 1] || 0;
   };
 
   // First core level at which a building type becomes available.
@@ -65,7 +65,7 @@
   };
 
   Base.buildArea = function (coreLevel) {
-    const size = C.grid.buildAreaByCore[U.clamp(coreLevel, 1, 6) - 1];
+    const size = C.grid.buildAreaByCore[U.clamp(coreLevel, 1, C.buildings.core.levels.length) - 1];
     const x0 = Math.floor((C.grid.size - size) / 2);
     return { x0: x0, y0: x0, x1: x0 + size, y1: x0 + size, size: size };
   };

@@ -86,7 +86,7 @@
       dead: false, func: s.func !== false,
       wall: def.category === 'wall', trap: def.category === 'trap',
       def: def.category === 'defense' || def.category === 'trap',
-      res: !!(def.produces || def.stores), core: s.type === 'core',
+      res: !!(def.produces || def.stores || def.storesBoth), core: s.type === 'core',
       loot: loot, lootLeft: loot ? { credits: loot.credits, energy: loot.energy } : null,
       hidden: !!s.hidden, atk: null, cd: 0, tgt: 0, ramp: 0, armed: true, trig: -1, spent: false, hitT: -999
     };
@@ -95,7 +95,7 @@
       c.atk = {
         kind: A.kind, range: A.range, minRange: A.minRange || 0,
         period: Math.max(1, Math.round((A.period || 1) * TR)),
-        dmg: L.dmg * (o.defDmgMult || 1), splash: A.splash || 0, slow: L.slow || 0, ground: !!A.ground,
+        dmg: L.dmg * (o.defDmgMult || 1), splash: A.splash || 0, slow: L.slow || 0, ground: !!A.ground, air: !!A.air,
         speed: (A.projectileSpeed || 0) * TICK,
         flight: Math.round((A.flight || 0) * TR), delay: Math.round((A.delay || 0) * TR),
         rampPerSec: A.rampPerSec || 0, rampMax: A.rampMax || 1
@@ -266,8 +266,8 @@
     return { ok: true };
   };
 
-  // Cloaked heroes cannot be targeted; ground-only defenses ignore flying troops.
-  function canHit(A, u) { return !u.dead && !(u.hideT > 0) && !(A.ground && u.air); }   // "!(x > 0)": snapshots saved before heroes have no hideT
+  // Cloaked heroes cannot be targeted; ground-only defenses ignore flying troops, air-only ones ground troops.
+  function canHit(A, u) { return !u.dead && !(u.hideT > 0) && !(A.ground && u.air) && !(A.air && !u.air); }   // "!(x > 0)": snapshots saved before heroes have no hideT
 
   B.surrender = function (b) { if (!b.ended) end(b, b.deployedAny ? 'retreat' : 'cancel'); };
 
@@ -783,6 +783,19 @@
     return best;
   }
 
+  // Longshot targeting: the attacker with the most health left (ties go to the nearest).
+  function pickToughest(b, A, cx, cy) {
+    let best = null, bh = -1, bd = Infinity;
+    b.units.forEach(function (u) {
+      if (!canHit(A, u) || !inDefRange(A, cx, cy, u)) return;
+      const d = U.dist(cx, cy, u.x, u.y);
+      if (u.hp > bh || (u.hp === bh && d < bd)) { best = u; bh = u.hp; bd = d; }
+    });
+    return best;
+  }
+
+  const PROJ = { blaster: 'ball', flak: 'flak', rail: 'slug' };
+
   function updateDefense(b, d) {
     const A = d.atk;
     if (!d.func || d.spent) return;
@@ -791,16 +804,16 @@
       if (d.armed) {
         for (let i = 0; i < b.units.length; i++) {
           const u = b.units[i];
-          if (!u.dead && !u.air && u.type !== 'mender' && U.dist(cx, cy, u.x, u.y) <= A.range) {
+          if (!u.dead && !u.air === !A.air && u.type !== 'mender' && U.dist(cx, cy, u.x, u.y) <= A.range) {
             d.armed = false; d.trig = b.tick; d.hidden = false;
             ev(b, { t: 'mineArm', id: d.id, x: cx, y: cy });
             break;
           }
         }
       } else if (b.tick - d.trig >= A.delay) {
-        b.units.forEach(function (u) { if (!u.dead && !u.air && U.dist(cx, cy, u.x, u.y) <= A.splash) hurtUnit(b, u, A.dmg, d); });
+        b.units.forEach(function (u) { if (!u.dead && !u.air === !A.air && U.dist(cx, cy, u.x, u.y) <= A.splash) hurtUnit(b, u, A.dmg, d); });
         d.spent = true;
-        ev(b, { t: 'boom', x: cx, y: cy, r: A.splash, k: 'mine' });
+        ev(b, { t: 'boom', x: cx, y: cy, r: A.splash, k: A.air ? 'flak' : 'mine' });
       }
       return;
     }
@@ -832,6 +845,7 @@
       ev(b, { t: 'fire', id: d.id, k: 'mortar', x: cx, y: cy });
       return;
     }
+    if (A.kind === 'rail' && d.cd === 0) t = pickToughest(b, A, cx, cy);
     if (!t) t = pickNearest(b, A, cx, cy);
     if (A.kind === 'lance') {
       if (!t) { d.tgt = 0; d.ramp = 0; return; }
@@ -843,7 +857,7 @@
     d.tgt = t ? t.id : 0;
     if (!t || d.cd > 0) return;
     d.cd = A.period;
-    b.proj.push({ id: b.nextId++, k: A.kind === 'blaster' ? 'ball' : 'bolt', x: cx, y: cy, sx: cx, sy: cy, tx: 0, ty: 0, tgt: t.id, tb: 0, dmg: A.dmg, splash: 0, spd: A.speed, t: 0, dur: 0, src: d.id });
+    b.proj.push({ id: b.nextId++, k: PROJ[A.kind] || 'bolt', x: cx, y: cy, sx: cx, sy: cy, tx: 0, ty: 0, tgt: t.id, tb: 0, dmg: A.dmg, splash: A.splash, spd: A.speed, t: 0, dur: 0, src: d.id });
     ev(b, { t: 'fire', id: d.id, k: A.kind, x: cx, y: cy });
   }
 
@@ -885,6 +899,11 @@
                   if (!c.dead && !c.trap && U.distToRect(p.x, p.y, c.x, c.y, c.w, c.h) <= p.splash) hurtBuilding(b, c, p.dmg);
                 });
               } else hurtBuilding(b, target, p.dmg);
+            } else if (p.splash) {
+              // flak burst: hurts every unit of the target's kind (air or ground) around the target
+              const src = bById(b, p.src);
+              b.units.forEach(function (u) { if (!u.dead && !u.air === !target.air && U.dist(target.x, target.y, u.x, u.y) <= p.splash) hurtUnit(b, u, p.dmg, src); });
+              ev(b, { t: 'boom', x: target.x, y: target.y, r: p.splash, k: p.k });
             } else hurtUnit(b, target, p.dmg, bById(b, p.src));
             ev(b, { t: 'impact', x: p.x, y: p.y, k: p.k });
           } else {

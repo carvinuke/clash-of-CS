@@ -915,6 +915,16 @@
       ctx.lineCap = 'butt';
       ctx.fillStyle = '#e4e8ec'; ctx.beginPath(); ctx.arc(s[0], s[1], (p.k === 'bolt' ? 2 : 1.4) * z, 0, Math.PI * 2); ctx.fill();
       if (p.k === 'arrow') { ctx.fillStyle = '#f3ecdc'; ctx.beginPath(); ctx.arc(t[0], t[1], 1.4 * z, 0, Math.PI * 2); ctx.fill(); }
+    } else if (p.k === 'flak') {
+      ctx.fillStyle = '#3a3d42'; ctx.beginPath(); ctx.arc(s[0], s[1], 2.8 * z, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = INK; ctx.lineWidth = 0.8; ctx.stroke();
+      ctx.fillStyle = (time * 16 | 0) & 1 ? '#ffd34d' : '#ff7a3d'; ctx.beginPath(); ctx.arc(s[0], s[1], 1.2 * z, 0, Math.PI * 2); ctx.fill();
+    } else if (p.k === 'slug') {
+      const t = R.toScreen(p.x - p.dx * 2.4, p.y - p.dy * 2.4, p.z + p.dz * 2.4);
+      ctx.lineCap = 'round';
+      ctx.strokeStyle = 'rgba(150,215,255,0.45)'; ctx.lineWidth = 5 * z; ctx.beginPath(); ctx.moveTo(t[0], t[1]); ctx.lineTo(s[0], s[1]); ctx.stroke();
+      ctx.strokeStyle = '#f2fbff'; ctx.lineWidth = 2 * z; ctx.stroke();
+      ctx.lineCap = 'butt';
     } else if (p.k === 'orb') {
       const r = 8 * z;
       const g = ctx.createRadialGradient(s[0], s[1], 0, s[0], s[1], r);
