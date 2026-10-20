@@ -120,7 +120,7 @@
   function hydrate(b) {
     b._rt = {
       occ: new Int32Array(S * S), deploy: new Uint8Array(S * S),
-      bById: new Map(), units: new Map(), pathCache: new Map(),
+      bById: new Map(), units: new Map(), pathCache: new Map(), cover: new Map(),
       events: [], silent: false, anyDead: false, cells: new Map()
     };
     b.buildings.forEach(function (c) { b._rt.bById.set(c.id, c); });
@@ -387,6 +387,7 @@
     rebuildOcc(b);
     rebuildDeploy(b);
     b._rt.pathCache.clear();
+    b._rt.cover.clear();
     ev(b, { t: 'destroyed', id: c.id, x: c.x + c.w / 2, y: c.y + c.h / 2, w: c.w, k: c.type, lc: lc, le: le });
   }
 
@@ -484,13 +485,17 @@
   }
 
   // How many working defenses cover a building (used by careful troops such as Rangers).
+  // Cached until a building falls: a big army retargeting at once made this the hot spot.
   function coverage(b, c) {
-    let n = 0;
+    let n = b._rt.cover.get(c.id);
+    if (n !== undefined) return n;
+    n = 0;
     const cx = c.x + c.w / 2, cy = c.y + c.h / 2;
     b.buildings.forEach(function (d) {
       if (d.dead || !d.atk || !d.func || d === c || d.trap) return;
       if (U.dist(cx, cy, d.x + d.w / 2, d.y + d.h / 2) <= d.atk.range + 1) n++;
     });
+    b._rt.cover.set(c.id, n);
     return n;
   }
 

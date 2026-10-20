@@ -811,7 +811,7 @@
       info.angle = R.aimAngle(c.id, tgt ? Math.atan2(tgt.y - cy, tgt.x - cx) : null, dt);
       info.recoil = R.recoilAmount(c.id);
     } else if (A.kind === 'lance') {
-      info.firing = !!tgt && c.func;
+      info.firing = !!tgt && c.func && !c.dead && !b.ended;   // a destroyed lance keeps its last target id
       if (info.firing) beams.push({ x0: cx, y0: cy, z0: 64, x1: tgt.x, y1: tgt.y, z1: 12 });
     } else if (A.kind === 'frost') info.pulse = R.pulseAmount(c.id);
     else if (A.kind === 'mine') { info.hidden = false; info.triggered = !c.armed; }
