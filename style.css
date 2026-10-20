@@ -556,6 +556,11 @@ body:has(#threat.show) #panel { top: 154px; max-height: calc(100vh - 154px - 90p
 .node.locked .nl { color: var(--cream-3); }
 .node.locked.sel .nl { color: #2a1b0c; }
 .node.reb .pin > svg { opacity: 0.75; }
+/* boss strongholds: a larger pin with a red skull badge and a red name plate */
+.node.boss .pin { width: 44px; height: 48px; }
+.node.boss .nb.boss-b { left: auto; right: -8px; top: -6px; background: var(--red-deep); border-color: #4a140a; color: #ffe9dc; }
+.node.boss .nl { border-color: var(--red-deep); }
+.node.boss.claimed .nb.boss-b { background: var(--ink-900); border-color: var(--frame); color: var(--cream-3); }
 .node.home { z-index: 0; flex-direction: row; gap: 5px; transform: translate(-17px, -19px); }
 .node.home .pin { width: 34px; height: 38px; }
 .node.home .nl { background: var(--blue-deep); border-color: #10284a; font-family: var(--font-ui); font-weight: 600; }
@@ -588,6 +593,8 @@ body:has(#threat.show) #panel { top: 154px; max-height: calc(100vh - 154px - 90p
 .dchip > span { display: flex; flex-direction: column; gap: 1px; line-height: 1.1; }
 .dchip b { font-size: var(--fs-small); font-weight: 600; font-variant-numeric: tabular-nums; }
 .dchip small { color: var(--cream-3); font-size: var(--fs-micro); }
+.dchip.boss { padding-right: 9px; align-items: flex-start; }
+.dchip.boss small { white-space: normal; max-width: 34ch; }
 .wd-b .notice { margin: 4px 0 10px; }
 .wd-act { display: flex; flex-direction: column; gap: 8px; padding: 12px; border-top: 1px solid var(--sep); }
 .wd-act .mbtn { width: 100%; }
@@ -696,7 +703,7 @@ input.code { width: 100%; min-height: 38px; margin: 10px 0 4px; padding: 0 10px;
 @media (max-width: 760px) {
   .acols, .help { grid-template-columns: minmax(0, 1fr); }
   .lstats, .dr-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .node.locked:not(.sel) .nl, .node.home .nl { display: none; }   /* labels collide on a narrow map */
+  .node.locked:not(.sel) .nl, .node.boss:not(.sel) .nl, .node.home .nl { display: none; }   /* labels collide on a narrow map */
 }
 /* phones: every window except a confirmation becomes a full-screen sheet */
 @media (max-width: 600px) {
@@ -790,6 +797,13 @@ input.code { width: 100%; min-height: 38px; margin: 10px 0 4px; padding: 0 10px;
 @media (hover: none) { .tbtn kbd { display: none; } }
 /* heroes: a brass rim marks them; once deployed the button becomes the ability and glows until used */
 .tbtn.hero { border-color: var(--brass); }
+.tbtn.spell { border-color: #6b4fa0; }
+.tbtn.spell.on { box-shadow: inset 0 0 0 2px #c7a2ff; }
+.tbtn:not(.spell) + .tbtn.spell { margin-left: 8px; }   /* a gap between the army and the spells */
+/* a long tray (many troop types plus spells) uses smaller buttons and moves the hint above it */
+.bh-tlist.dense .tbtn { width: 56px; height: 76px; padding-bottom: 5px; }
+.bh-tlist.dense .tbtn .tthumb { width: 44px; height: 44px; }
+.bh-bottom:has(.bh-tlist.dense) { grid-template-columns: auto minmax(0, 1fr) auto; grid-template-areas: "hint hint hint" "troops . ctrl"; }
 .tbtn.ab { background: var(--ink-600); box-shadow: inset 0 0 0 2px var(--brass-hi); animation: abGlow 1.1s ease-in-out infinite alternate; }
 .tbtn.ab b { font-size: var(--fs-small); color: var(--brass-hi); white-space: nowrap; }
 @keyframes abGlow { to { box-shadow: inset 0 0 0 2px var(--brass-hi), 0 0 12px rgba(236, 199, 126, 0.55); } }

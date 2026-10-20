@@ -107,6 +107,7 @@
   };
 
   A.advance = function (state, dtSec, events) {
+    A.advanceSpells(state, dtSec, events);
     const army = state.army;
     if (!army.queue.length) { army.progress = 0; return; }
     const barracks = A.activeBarracks(state);
@@ -172,6 +173,94 @@
       const lost = U.clamp(1 - hp[h], 0, 1);
       state.heroes[h] = { readyAt: lost > 0 ? now + lost * A.heroRestSec(state, h) * 1000 : 0 };
     });
+  };
+
+  // ---------------------------------------------------------------- spells
+  // The Spell Forge brews one spell at a time into state.spells (same shape as the army: units,
+  // queue, progress). Its level unlocks spells, sets the slots and is the level of every spell cast.
+  A.forge = function (state) {
+    return state.base.buildings.find(function (b) { return b.type === 'forge' && b.level >= 1; }) || null;
+  };
+
+  A.forgeLevel = function (state) { const f = A.forge(state); return f ? f.level : 0; };
+
+  A.spellCapacity = function (state) { const f = A.forge(state); return f ? Base.levelDef('forge', f.level).capacity : 0; };
+
+  A.spellSpace = function (state) {
+    let n = 0;
+    Object.keys(state.spells.units).forEach(function (t) { n += (state.spells.units[t] || 0) * C.spells[t].space; });
+    state.spells.queue.forEach(function (q) { n += q.count * C.spells[q.type].space; });
+    return n;
+  };
+
+  A.spellUnlockLevel = function (type) {
+    const L = C.buildings.forge.levels;
+    for (let i = 0; i < L.length; i++) if (L[i].unlock.indexOf(type) >= 0) return i + 1;
+    return 99;
+  };
+
+  A.spellCost = function (state, type) {
+    const P = C.spells[type];
+    return P.cost[U.clamp(A.forgeLevel(state), 1, P.cost.length) - 1];
+  };
+
+  A.canBrew = function (state, type) {
+    const P = C.spells[type];
+    if (!P) return { ok: false, reason: 'Unknown spell' };
+    const f = A.forge(state);
+    if (!f) return { ok: false, reason: 'Build a Spell Forge first' };
+    if (f.level < A.spellUnlockLevel(type)) return { ok: false, reason: 'Unlocks at Spell Forge Lv ' + A.spellUnlockLevel(type) };
+    if (A.spellCapacity(state) - A.spellSpace(state) < P.space) return { ok: false, reason: 'The Spell Forge is full' };
+    const cost = { energy: A.spellCost(state, type) };
+    const af = CS.Eco.canAfford(state, cost);
+    if (!af.ok) return { ok: false, reason: 'Need ' + U.fmt(af.short) + ' more Energy', short: af };
+    return { ok: true, cost: cost };
+  };
+
+  A.brew = function (state, type) {
+    const chk = A.canBrew(state, type);
+    if (!chk.ok) return chk;
+    CS.Eco.spend(state, chk.cost);
+    const q = state.spells.queue, last = q[q.length - 1];
+    if (last && last.type === type && last.unitCost === chk.cost.energy) last.count++;
+    else q.push({ type: type, count: 1, unitCost: chk.cost.energy });
+    CS.Bus.emit('train:queued', { type: type, n: 1 });
+    return { ok: true };
+  };
+
+  A.unbrew = function (state, index) {
+    const sp = state.spells, q = sp.queue[index];
+    if (!q) return;
+    CS.Eco.add(state, 'energy', q.unitCost);
+    if (--q.count <= 0) {
+      sp.queue.splice(index, 1);
+      if (index === 0) sp.progress = 0;
+    }
+  };
+
+  A.spellsRemaining = function (state) {
+    let total = -state.spells.progress;
+    state.spells.queue.forEach(function (q) { total += C.spells[q.type].time * q.count; });
+    return Math.max(0, total);
+  };
+
+  // Brewing pauses while the forge is upgrading or in ruins.
+  A.advanceSpells = function (state, dtSec, events) {
+    const sp = state.spells;
+    if (!sp.queue.length) { sp.progress = 0; return; }
+    const f = A.forge(state);
+    if (!f || !Base.isFunctional(f)) return;
+    sp.progress += dtSec;
+    let guard = 1000;
+    while (sp.queue.length && guard-- > 0) {
+      const head = sp.queue[0], need = C.spells[head.type].time;
+      if (sp.progress < need) break;
+      sp.progress -= need;
+      sp.units[head.type] = (sp.units[head.type] || 0) + 1;
+      if (events) events.push({ type: 'brewed', spell: head.type });
+      if (--head.count <= 0) sp.queue.shift();
+    }
+    if (!sp.queue.length) sp.progress = 0;
   };
 
   CS.Army = A;

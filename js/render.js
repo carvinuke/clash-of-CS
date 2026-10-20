@@ -549,7 +549,19 @@
         for (let i = 0; i < 3; i++) add({ k: 'plus', x: x + (rnd() - 0.5) * 1.4, y: y + (rnd() - 0.5) * 1.4, z: 12, vx: 0, vy: 0, vz: 20, g: 0, life: 0.8, max: 0.8, size: 2.6, col: '#6dff98' });
         break;
       case 'frost':
-        ring(x, y, 0.6, o.r || 4, '#bfefff', 0.5, 2.2);
+        ring(x, y, 0.6, o.r || 4, o.col || '#bfefff', 0.5, 2.2);
+        break;
+      case 'breath': {     // fire from (x, y, z) toward o.x, o.y: a drake's breath or the Wyrm Idol's cone
+        const n = o.wide ? 16 : 9;
+        for (let i = 0; i < n; i++) {
+          const f = 0.5 + rnd() * 0.7, sp = o.wide ? 0.9 : 0.35;
+          const dx = (o.x - x) * f + (rnd() - 0.5) * sp * Math.hypot(o.x - x, o.y - y) * 0.5, dy = (o.y - y) * f + (rnd() - 0.5) * sp * Math.hypot(o.x - x, o.y - y) * 0.5;
+          add({ k: 'fire', x: x, y: y, z: z || 20, vx: dx / 0.45, vy: dy / 0.45, vz: ((o.z || 6) - (z || 20)) / 0.45, g: 0, life: 0.45, max: 0.45, size: 3 + rnd() * 4, col: rnd() < 0.5 ? '#ff9b3d' : '#ffd34d' });
+        }
+        break;
+      }
+      case 'zap':          // a lightning bolt through o.pts ([x, y, z] in tiles and px)
+        add({ k: 'zap', x: 0, y: 0, z: 0, life: o.life || 0.22, max: o.life || 0.22, pts: o.pts, w: o.w || 1 });
         break;
       case 'text':
         add({ k: 'text', x: x, y: y, z: z || 40, vx: 0, vy: 0, vz: 24, g: 0, life: o.life || 1.3, max: o.life || 1.3, text: o.text, col: o.col || '#fff', size: o.size || 15 });
@@ -650,6 +662,12 @@
     for (let i = 0; i < F.length; i++) {
       const p = F[i];
       const f = p.life / p.max;
+      if (p.k === 'zap') {
+        ctx.globalAlpha = Math.min(1, f * 2);
+        for (let k = 1; k < p.pts.length; k++) drawBeam(ctx, R.toScreen(p.pts[k - 1][0], p.pts[k - 1][1], p.pts[k - 1][2]), R.toScreen(p.pts[k][0], p.pts[k][1], p.pts[k][2]), p.w);
+        ctx.globalAlpha = 1;
+        continue;
+      }
       if (p.k === 'ring') {
         const e = 1 - f, r = p.r0 + (p.r1 - p.r0) * (1 - (1 - e) * (1 - e));
         ellipseAt(ctx, p.x, p.y, r);
@@ -853,17 +871,51 @@
       Spr.drawLive(ctx, b, b.info || {}, time, spr);
       ctx.restore();
     }
-    const glow = b.hitFlash ? 0.2 : b.sel ? 0.06 + Math.sin(time * 4) * 0.02 : b.hover ? 0.05 : 0;
+    const frozen = b.info && b.info.frozen;
+    const glow = b.hitFlash ? 0.2 : frozen ? 0.22 : b.sel ? 0.06 + Math.sin(time * 4) * 0.02 : b.hover ? 0.05 : 0;
     if (glow > 0) {
       ctx.globalCompositeOperation = 'lighter';
       ctx.globalAlpha = glow;
       ctx.drawImage(spr.canvas, x, y, w, h);
     }
     ctx.restore();
+    if (frozen) {
+      // Frostbind: a cap of ice over the building
+      ctx.save();
+      const c = R.toScreen(b.x + b.w / 2, b.y + b.h / 2);
+      ctx.beginPath(); ctx.ellipse(c[0], c[1], (b.w + b.h) * HW * 0.42 * z, (b.w + b.h) * HH * 0.42 * z, 0, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(200,240,255,0.32)'; ctx.fill();
+      ctx.strokeStyle = 'rgba(235,252,255,0.8)'; ctx.lineWidth = 1.4; ctx.stroke();
+      ctx.restore();
+    }
+  }
+
+  // Spell zones on the ground: a tinted disc, a bright rim and motes that show what the zone does.
+  function drawZones(ctx, zones, time) {
+    const z = R.cam.zoom;
+    zones.forEach(function (q) {
+      const col = C.spells[q.k].color, fade = Math.min(1, q.left * 2);
+      ellipseAt(ctx, q.x, q.y, q.r);
+      ctx.fillStyle = Spr.alpha(col, 0.16 * fade); ctx.fill();
+      ctx.lineWidth = 2.2 * Math.max(0.7, z); ctx.strokeStyle = Spr.alpha(col, 0.85 * fade); ctx.stroke();
+      ellipseAt(ctx, q.x, q.y, q.r * (0.55 + 0.1 * Math.sin(time * 4)));
+      ctx.lineWidth = 1; ctx.strokeStyle = Spr.alpha(col, 0.4 * fade); ctx.stroke();
+      for (let i = 0; i < 10; i++) {
+        const a = i * 2.39996 + time * (q.k === 'rage' ? 1.6 : 0.5), rr = q.r * Math.sqrt((i + 0.5) / 10);
+        const rise = (time * (q.k === 'freeze' ? 0.3 : 0.8) + i * 0.37) % 1;
+        const p = R.toScreen(q.x + Math.cos(a) * rr, q.y + Math.sin(a) * rr, q.k === 'freeze' ? 4 : rise * 30);
+        ctx.globalAlpha = fade * (q.k === 'freeze' ? 0.9 : 1 - rise);
+        ctx.fillStyle = q.k === 'heal' ? '#d6ffe2' : q.k === 'rage' ? '#ff9a7a' : '#f3fdff';
+        if (q.k === 'heal') { const w = 2.2 * z; ctx.fillRect(p[0] - w / 2, p[1] - w * 1.5, w, w * 3); ctx.fillRect(p[0] - w * 1.5, p[1] - w / 2, w * 3, w); }
+        else if (q.k === 'freeze') { ctx.beginPath(); ctx.moveTo(p[0], p[1] - 4 * z); ctx.lineTo(p[0] + 2 * z, p[1]); ctx.lineTo(p[0], p[1] + 1.5 * z); ctx.lineTo(p[0] - 2 * z, p[1]); ctx.closePath(); ctx.fill(); }
+        else { ctx.beginPath(); ctx.arc(p[0], p[1], 1.8 * z, 0, Math.PI * 2); ctx.fill(); }
+      }
+      ctx.globalAlpha = 1;
+    });
   }
 
   function drawUnit(ctx, u, time) {
-    const s = R.toScreen(u.x, u.y);
+    const s = R.toScreen(u.x, u.y, u.z || 0);
     const z = R.cam.zoom;
     if (s[0] < -40 || s[1] < -60 || s[0] > R.W + 40 || s[1] > R.H + 40) return;
     const k = Math.max(z, 0.8) * 1.1;
@@ -877,6 +929,11 @@
       // rallied by the War Cry: a brass ring under the feet
       ctx.beginPath(); ctx.ellipse(s[0], s[1], 8.5 * k, 4.2 * k, 0, 0, Math.PI * 2);
       ctx.strokeStyle = 'rgba(255,214,120,' + (0.55 + Math.sin(time * 10) * 0.25) + ')'; ctx.lineWidth = 1.6; ctx.stroke();
+    }
+    if (u.rage) {
+      // Bloodrush: a red ring that throbs with the war drums
+      ctx.beginPath(); ctx.ellipse(s[0], s[1], 8 * k, 4 * k, 0, 0, Math.PI * 2);
+      ctx.strokeStyle = 'rgba(255,90,60,' + (0.6 + Math.sin(time * 14) * 0.3) + ')'; ctx.lineWidth = 1.8; ctx.stroke();
     }
     if (u.cloak) ctx.globalAlpha = 0.35;   // Smoke Veil: defenses cannot see her
     Spr.drawTroop(ctx, s[0], s[1], k, u.type, u.team, time + u.id * 0.37, u);
@@ -925,6 +982,20 @@
       ctx.strokeStyle = 'rgba(150,215,255,0.45)'; ctx.lineWidth = 5 * z; ctx.beginPath(); ctx.moveTo(t[0], t[1]); ctx.lineTo(s[0], s[1]); ctx.stroke();
       ctx.strokeStyle = '#f2fbff'; ctx.lineWidth = 2 * z; ctx.stroke();
       ctx.lineCap = 'butt';
+    } else if (p.k === 'shard') {
+      const t = R.toScreen(p.x - p.dx * 0.9, p.y - p.dy * 0.9, p.z + p.dz * 0.9);
+      ctx.lineCap = 'round';
+      ctx.strokeStyle = 'rgba(150,215,255,0.5)'; ctx.lineWidth = 4.4 * z; ctx.beginPath(); ctx.moveTo(t[0], t[1]); ctx.lineTo(s[0], s[1]); ctx.stroke();
+      ctx.strokeStyle = '#eafaff'; ctx.lineWidth = 1.8 * z; ctx.stroke();
+      ctx.lineCap = 'butt';
+    } else if (p.k === 'boulder') {
+      const g = R.toScreen(p.x, p.y, 0);
+      ctx.fillStyle = 'rgba(20,14,8,0.2)'; ctx.beginPath(); ctx.ellipse(g[0], g[1], 4 * z, 2 * z, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.save(); ctx.translate(s[0], s[1]); ctx.rotate(time * 7);
+      ctx.beginPath(); ctx.moveTo(-5 * z, -1 * z); ctx.lineTo(-2 * z, -5 * z); ctx.lineTo(4 * z, -3.6 * z); ctx.lineTo(5 * z, 2 * z); ctx.lineTo(0, 5 * z); ctx.lineTo(-4.4 * z, 3 * z); ctx.closePath();
+      ctx.fillStyle = '#8f877c'; ctx.fill(); ctx.strokeStyle = INK; ctx.lineWidth = 1; ctx.stroke();
+      ctx.fillStyle = 'rgba(255,255,255,0.25)'; ctx.fillRect(-2 * z, -3 * z, 2 * z, 1.4 * z);
+      ctx.restore();
     } else if (p.k === 'orb') {
       const r = 8 * z;
       const g = ctx.createRadialGradient(s[0], s[1], 0, s[0], s[1], r);
@@ -933,7 +1004,7 @@
     }
   }
 
-  function drawBeam(ctx, a, b) {
+  function drawBeam(ctx, a, b, w) {
     const pts = [a];
     const n = 7;
     for (let i = 1; i < n; i++) {
@@ -942,7 +1013,7 @@
     }
     pts.push(b);
     [[7, 'rgba(120,200,255,0.3)'], [3, 'rgba(190,235,255,0.9)'], [1.2, '#ffffff']].forEach(function (st) {
-      ctx.strokeStyle = st[1]; ctx.lineWidth = st[0] * R.cam.zoom;
+      ctx.strokeStyle = st[1]; ctx.lineWidth = st[0] * R.cam.zoom * (w || 1);
       ctx.beginPath(); ctx.moveTo(pts[0][0], pts[0][1]);
       for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
       ctx.stroke();
@@ -1003,7 +1074,7 @@
   }
 
   // Health bar height above a troop's feet, in px at zoom 1 (flyers and big troops sit higher).
-  const BAR_Y = { bruiser: 40, mender: 42, gyro: 46, lancer: 40, colossus: 56, marshal: 44, huntress: 36 };
+  const BAR_Y = { bruiser: 40, mender: 42, gyro: 46, lancer: 40, colossus: 56, marshal: 44, huntress: 36, vaulter: 38, trebuchet: 46, drake: 58 };
 
   function drawOverlays(ctx, scene, time) {
     const z = R.cam.zoom;
@@ -1023,7 +1094,7 @@
       (scene.units || []).forEach(function (u) {
         if (u.hp >= u.maxHp) return;
         const k = Math.max(z, 0.8) * 1.1;
-        const s = R.toScreen(u.x, u.y);
+        const s = R.toScreen(u.x, u.y, u.z || 0);
         const hy = (BAR_Y[u.type] || 33) * k;
         bar(ctx, s[0], s[1] - hy, 14, 2, u.hp / u.maxHp, u.enemy ? '#ff7a5c' : '#7fd0ff');
       });
@@ -1101,6 +1172,7 @@
     }
     if (scene.grid && scene.area) drawGrid(ctx, scene);
     if (scene.deploy) drawDeploy(ctx, scene.deploy);
+    if (scene.zones && scene.zones.length) drawZones(ctx, scene.zones, time);
     (scene.highlights || []).forEach(function (h) {
       ctx.beginPath();
       tileQuad(ctx, h.x, h.y, h.x + h.w, h.y + h.h);

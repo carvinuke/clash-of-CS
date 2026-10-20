@@ -21,7 +21,7 @@
   Presets.layout = function (core, i) {
     const key = core + ':' + i;
     if (cache[key]) return cache[key];
-    const spec = { core: core, area: Base.buildArea(core).size, walls: [0, 0], wallLv: [1, 1], b: {} };
+    const spec = { core: core, area: Base.buildArea(core).size, walls: [0, 0], wallLv: [1, 1], b: {}, tight: true };   // tight: no gaps around outer buildings
     Object.keys(C.buildings).forEach(function (type) {
       const n = Base.maxCount(type, core);
       if (type === 'wall') spec.walls = [n, n];
@@ -29,13 +29,18 @@
     });
     const want = Object.keys(spec.b).reduce(function (n, t) { return n + spec.b[t][0]; }, 1);
     let gen = [];
-    // A seed can leave a building without room; the next one usually fits everything.
-    for (let seed = 7919 * core + 104729 * (i + 1), k = 0; k < 8; k++, seed++) {
-      gen = CS.NPC.generate(spec, 0, seed, Presets.STYLES[i].arch);
-      if (gen.filter(function (b) { return b.type !== 'wall'; }).length === want) break;
+    const walls = spec.walls[0];
+    // A seed can leave a building without room; the next one usually fits everything. On a crowded
+    // core level the inner walls can take that room, so fewer of them are tried (the rest ring the base).
+    search: for (let f = 1; f >= 0; f -= 0.25) {
+      spec.walls = [Math.round(walls * f), Math.round(walls * f)];
+      for (let seed = 7919 * core + 104729 * (i + 1), k = 0; k < 8; k++, seed++) {
+        gen = CS.NPC.generate(spec, 0, seed, Presets.STYLES[i].arch);
+        if (gen.filter(function (b) { return b.type !== 'wall'; }).length === want) break search;
+      }
     }
     const out = gen.map(function (b) { return { type: b.type, x: b.x, y: b.y, rot: b.rot }; });
-    addOuterWalls(out, core, spec.walls[0]);
+    addOuterWalls(out, core, walls);
     cache[key] = out;
     return cache[key];
   };

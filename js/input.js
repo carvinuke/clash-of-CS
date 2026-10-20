@@ -203,8 +203,7 @@
       const b = G.battle;
       if (!b) return;
       if (k >= '1' && k <= '9') {
-        const list = CS.CONFIG.deployOrder.filter(function (t) { return (b.meta.brought || {})[t] > 0; });
-        const type = list[Number(k) - 1];
+        const type = G.tray(b)[Number(k) - 1];
         if (type) G.selectTroop(type);
       } else if (k === ' ' && I.mouse) {
         const t = tileAt(I.mouse.x, I.mouse.y);

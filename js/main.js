@@ -389,6 +389,20 @@
     refresh();
   };
 
+  G.brew = function (type) {
+    const r = Army.brew(G.state, type);
+    if (!r.ok) return fail(r.reason);
+    sfx('train');
+    refresh();
+    return true;
+  };
+
+  G.unbrew = function (index) {
+    Army.unbrew(G.state, index);
+    sfx('click');
+    refresh();
+  };
+
   G.research = function (key) {
     const r = CS.Research.start(G.state, key, now());
     if (!r.ok) return fail(r.reason);
@@ -496,6 +510,12 @@
     return null;
   };
 
+  // The battle tray, in order: troops and heroes brought, then the spells brought (keys 1-9 follow it).
+  G.tray = function (b) {
+    const br = b.meta.brought || {}, sp = b.meta.spells || {};
+    return C.deployOrder.filter(function (t) { return br[t] > 0; }).concat(C.spellOrder.filter(function (t) { return sp[t] > 0; }));
+  };
+
   G.raidStatus = function (id) {
     const st = G.state, s = NPC.def(id), t = now();
     if (!s) return { ok: false, reason: 'Unknown settlement' };
@@ -519,10 +539,12 @@
     // rested heroes always come along; they return home after the battle whatever happens
     C.heroOrder.forEach(function (h) { if (Army.heroReady(st, h, t)) { brought[h] = 1; levels[h] = Army.heroLevel(st, h); } });
     const diff = NPC.difficulty(st, s);
+    const spells = Object.assign({}, st.spells.units);
     G.battle = Bt.create({
       kind: 'attack', seed: (U.hash(id) ^ (t % 2147483647)) >>> 0, biome: NPC.faction(s).biome, name: s.name,
       targetId: id, buildings: NPC.battleBuildings(st, s, t), troops: brought, troopLevels: levels,
-      timeLimit: C.battle.raidSeconds, meta: { brought: brought, difficulty: diff.label, tier: s.tier }
+      spells: spells, spellLv: Army.forgeLevel(st),
+      timeLimit: C.battle.raidSeconds, meta: { brought: brought, spells: spells, difficulty: diff.label, tier: s.tier }
     });
     G.lastBattle = null; G.result = null;
     G.mode = 'raid'; G.acc = 0; G.speed = 1; G.ending = 0; G.battleWall = t;
@@ -543,7 +565,7 @@
   G.selectTroop = function (type) {
     const b = G.battle;
     if (b && C.heroes[type] && Bt.abilityReady(b, type)) { G.useAbility(type); return; }
-    if (!b || !(b.pool[type] > 0)) return;
+    if (!b || !(b.pool[type] > 0 || b.spells[type] > 0)) return;
     G.troopSel = type;
     sfx('click');
     CS.UI.refreshBattle();
@@ -552,6 +574,14 @@
   G.deployAt = function (tx, ty, quiet) {
     const b = G.battle;
     if (G.mode !== 'raid' || !b || b.ended) return false;
+    if (C.spells[G.troopSel] && b.spells[G.troopSel] > 0) {
+      if (quiet) return false;           // holding streams troops, never spells
+      if (!Bt.cast(b, G.troopSel, tx, ty).ok) return false;
+      if (!(b.spells[G.troopSel] > 0)) G.troopSel = G.firstTroop();
+      CS.Bus.emit('raid:cast', {});
+      CS.UI.refreshBattle();
+      return true;
+    }
     if (!G.troopSel || !(b.pool[G.troopSel] > 0)) G.troopSel = G.firstTroop();
     if (!G.troopSel) { if (!quiet) toast('All troops are deployed', 'info'); return false; }
     const r = Bt.deploy(b, G.troopSel, tx, ty);
@@ -639,20 +669,25 @@
       st.army.units[k] = Math.max(0, (st.army.units[k] || 0) - brought[k] + (res.survived[k] || 0));
     });
     Army.heroesRest(st, res.heroHp, t);
+    Object.keys(res.cast).forEach(function (k) { st.spells.units[k] = Math.max(0, (st.spells.units[k] || 0) - res.cast[k]); });
     const T = C.tiers[s.tier];
     const bonus = res.victory ? Math.round(T.bonus * res.stars / 3) : 0;
-    const want = { credits: res.loot.credits + bonus, energy: res.loot.energy + bonus };
+    // a boss stronghold pays its reward on the first victory only
+    const reward = s.defense && res.victory && !NPC.rec(st, s.id).claimed ? s.reward : null;
+    const want = { credits: res.loot.credits + bonus + (reward ? reward.credits : 0), energy: res.loot.energy + bonus + (reward ? reward.energy : 0) };
     const gained = { credits: Eco.add(st, 'credits', want.credits), energy: Eco.add(st, 'energy', want.energy) };
     const wasted = want.credits - gained.credits + want.energy - gained.energy;
     let renown = 0;
     if (res.victory) renown = C.battle.renownWin[res.stars - 1] + 2 * (s.tier - 1);
     else if (sum(res.deployed) > 0) renown = -Math.min(C.battle.renownLoss, st.player.renown);
+    if (reward) renown += reward.renown;
     CS.Player.addRenown(st, renown);
-    CS.Player.addXp(st, res.victory ? 4 + res.stars * 2 * s.tier : 1);
+    CS.Player.addXp(st, (res.victory ? 4 + res.stars * 2 * s.tier : 1) + (reward ? reward.xp : 0));
     if (res.victory) st.stats.raidsWon++; else st.stats.raidsLost++;
     st.stats.lootCredits += gained.credits;
     st.stats.lootEnergy += gained.energy;
     const notes = NPC.onRaidResult(st, s, res, t);
+    if (reward) notes.unshift('Boss defeated! ' + s.leader + ' yields ' + s.name + '. You claimed its reward of ' + U.fmt(reward.credits) + ' Credits, ' + U.fmt(reward.energy) + ' Energy and ' + reward.renown + ' renown.');
     Object.keys(res.heroHp).forEach(function (h) {
       const hs = Army.heroStatus(st, h, t);
       if (hs.code === 'resting') notes.push(C.troops[h].name + (res.heroHp[h] > 0 ? ' was wounded' : ' fell in battle') + ' and rests for ' + U.fmtTime(hs.left) + ' before the next raid.');
@@ -661,7 +696,7 @@
       U.pct(res.destruction) + '% destroyed, ' + res.stars + (res.stars === 1 ? ' star, ' : ' stars, ') +
       U.fmt(gained.credits) + ' Credits and ' + U.fmt(gained.energy) + ' Energy looted.', t);
     G.result = {
-      s: s, res: res, gained: gained, bonus: bonus, wasted: wasted, renown: renown, notes: notes,
+      s: s, res: res, gained: gained, bonus: bonus, reward: reward, wasted: wasted, renown: renown, notes: notes,
       tips: res.victory ? [] : explainLoss(res, b), difficulty: b.meta.difficulty
     };
     sfx(res.victory ? 'victory' : 'defeat');
@@ -731,7 +766,7 @@
   // ---------------------------------------------------------------- time
   function handleEvents(events, quiet) {
     if (!events.length) return;
-    let trained = 0, coreChanged = false;
+    let trained = 0, brewed = 0, coreChanged = false;
     events.forEach(function (e) {
       if (e.type === 'built' || e.type === 'upgraded') {
         if (e.btype === 'core') coreChanged = true;
@@ -745,15 +780,17 @@
           }
         }
       } else if (e.type === 'trained') trained++;
+      else if (e.type === 'brewed') brewed++;
       else if (e.type === 'research' && !quiet) {
         const d = CS.Research.describe(G.state, e.key);
         toast(d.name + ' research complete (Lv ' + e.level + ')', 'good', 'flask');
       } else if (e.type === 'repaired' && !quiet) toast(Base.name(e.btype) + ' has been rebuilt', 'info', 'wrench');
     });
     if (!quiet) {
-      if (events.some(function (e) { return e.type !== 'trained'; })) sfx('complete');
-      else if (trained) sfx('trainDone', { quiet: true });
+      if (events.some(function (e) { return e.type !== 'trained' && e.type !== 'brewed'; })) sfx('complete');
+      else if (trained || brewed) sfx('trainDone', { quiet: true });
       if (trained && !G.state.army.queue.length) toast('Training complete. Your army is ready.', 'good', 'army');
+      if (brewed && !G.state.spells.queue.length) toast('Your spells are brewed and ready for battle.', 'good', 'flask');
     }
     events.forEach(function (e) { CS.Bus.emit('time:' + e.type, e); });
     if (coreChanged) { G.refreshGround(); if (!quiet) toast('Your Command Core grew. More buildings and land are available!', 'good', 'core'); }
@@ -800,7 +837,8 @@
     return (set.has(y * S + x + 1) ? 1 : 0) | (set.has((y + 1) * S + x) ? 2 : 0);
   }
 
-  const AIMED = { blaster: 1, spire: 1, mortar: 1, flak: 1, rail: 1 };   // defenses that turn toward their target
+  const AIMED = { blaster: 1, spire: 1, mortar: 1, flak: 1, rail: 1, volley: 1, barrage: 1, cone: 1 };   // attack kinds that turn toward their target
+  const AURA = { frost: 1, flame: 1, thorns: 1 };
 
   function aimInfo(b, c, info, dt, beams) {
     const A = c.atk;
@@ -813,13 +851,21 @@
     } else if (A.kind === 'lance') {
       info.firing = !!tgt && c.func && !c.dead && !b.ended;   // a destroyed lance keeps its last target id
       if (info.firing) beams.push({ x0: cx, y0: cy, z0: 64, x1: tgt.x, y1: tgt.y, z1: 12 });
-    } else if (A.kind === 'frost') info.pulse = R.pulseAmount(c.id);
+    } else if (AURA[A.kind] || A.kind === 'chain') info.pulse = R.pulseAmount(c.id);
     else if (A.kind === 'mine') { info.hidden = false; info.triggered = !c.armed; }
+    if (c.frz > 0) info.frozen = true;
   }
 
-  const MUZZLE = { blaster: [1.25, 29], mortar: [0.45, 38], flak: [0.55, 50], rail: [1.6, 40] };   // barrel length (tiles), muzzle height
+  const MUZZLE = { blaster: [1.25, 29], mortar: [0.45, 38], flak: [0.55, 50], rail: [1.6, 40], volley: [0.95, 64], barrage: [0.6, 64], cone: [1.6, 44] };   // barrel length (tiles), muzzle height
 
   function idleAngle(id) { return Math.sin(G.time * 0.35 + id * 1.7) * 1.4 + 0.8; }
+
+  // Brewed spells as a flat list of types (the Forge's shelf shows one flask each).
+  function spellList(units) {
+    const out = [];
+    C.spellOrder.forEach(function (k) { for (let i = 0; i < (units[k] || 0); i++) out.push(k); });
+    return out;
+  }
 
   function homeScene(dt, scene) {
     const st = G.state, t = now();
@@ -852,6 +898,7 @@
       } else {
         if (!b.ruined && b.dmg > 0) o.hpFrac = Base.hp(st, b) / Base.maxHp(st, b);
         if (def.attack && AIMED[def.attack.kind]) info.angle = idleAngle(b.id);
+        if (def.attack && AURA[def.attack.kind]) info.pulse = 0;
       }
       if (G.place && G.place.moveId === b.id) o.alpha = 0.3;
       if (def.produces) {
@@ -862,6 +909,7 @@
       else if (def.storesBoth) info.fill = Math.min(1, (st.res.credits + st.res.energy) / Math.max(1, cap.credits + cap.energy));
       else if (b.type === 'garrison') { info.troops = units; info.troopTypes = types; }
       else if (b.type === 'lab') info.busy = !!ra;
+      else if (b.type === 'forge') { info.busy = st.spells.queue.length > 0 && Base.isFunctional(b); info.spells = spellList(st.spells.units); }
       else if (b.type === 'station') { info.idle = idle > 0 && !b.ruined; if (info.idle) idle--; }
       else if (b.type === 'barracks') info.active = info.active && st.army.queue.length > 0;
       const hs = def.hero ? Army.heroStatus(st, def.hero, t) : null;
@@ -874,6 +922,8 @@
         o.timer = { frac: U.clamp(1 - hs.left / Army.heroRestSec(st, def.hero), 0, 1), text: U.fmtTime(hs.left), icon: 'clock' };
       } else if (b.type === 'lab' && ra) {
         o.timer = { frac: U.clamp((t - ra.start) / (ra.end - ra.start), 0, 1), text: U.fmtTime((ra.end - t) / 1000), icon: 'flask' };
+      } else if (b.type === 'forge' && st.spells.queue.length && Base.isFunctional(b)) {
+        o.timer = { frac: U.clamp(st.spells.progress / C.spells[st.spells.queue[0].type].time, 0, 1), text: U.fmtTime(Army.spellsRemaining(st)), icon: 'flask' };
       } else if (b.type === 'barracks' && st.army.queue.length && !trainShown && Base.isFunctional(b)) {
         trainShown = true;
         const head = st.army.queue[0];
@@ -921,18 +971,28 @@
 
   // Projectile heights in px: where each shot leaves its weapon (the blaster muzzle, the spire's
   // ballista, a troop's hands) and how high on the target it lands.
-  const SHOT = { ball: { z: 29, hide: 1.15 }, bolt: { z: 82, hide: 0.95 }, arrow: { z: 13, hide: 0 }, orb: { z: 16, hide: 0 }, flak: { z: 50, hide: 0.55 }, slug: { z: 40, hide: 1.6 } };
+  const SHOT = { ball: { z: 29, hide: 1.15 }, bolt: { z: 82, hide: 0.95 }, arrow: { z: 13, hide: 0 }, orb: { z: 16, hide: 0 }, flak: { z: 50, hide: 0.55 }, slug: { z: 40, hide: 1.6 }, shard: { z: 62, hide: 0.7 }, boulder: { z: 30, hide: 0, arc: 46 } };
+  const WALL_TYPE = 'wall';
+
+  // A Vaulter crossing a wall tile is lifted on its pole: highest over the middle of the tile.
+  function hop(b, x, y) {
+    const tx = Math.floor(x), ty = Math.floor(y);
+    const c = Bt.buildingAt(b, tx, ty);
+    if (!c || c.type !== WALL_TYPE) return 0;
+    return 20 * Math.max(0, 1 - U.dist(x, y, tx + 0.5, ty + 0.5) / 0.6);
+  }
 
   function battleUnits(b, scene, team, threatened) {
     const a = U.clamp(G.acc / Bt.TICK, 0, 1);
     b.units.forEach(function (u) {
       const moving = Math.abs(u.x - u.px) + Math.abs(u.y - u.py) > 1e-4;
       const since = b.tick - u.atkT;
+      const x = u.px + (u.x - u.px) * a, y = u.py + (u.y - u.py) * a;
       scene.units.push({
-        id: u.id, type: u.type, team: team, x: u.px + (u.x - u.px) * a, y: u.py + (u.y - u.py) * a,
+        id: u.id, type: u.type, team: team, x: x, y: y,
         face: u.face, idle: !moving, atk: since < 9 ? since / 9 : null, hit: b.tick - u.hitT < 3,
         lv: u.lv, skin: u.id % 4, hp: u.hp, maxHp: u.maxHp, enemy: b.kind === 'defense',
-        air: u.air, cloak: u.hideT > 0, buff: u.buffT > 0,
+        air: u.air, cloak: u.hideT > 0, buff: u.buffT > 0, rage: u.rgT > 0, z: C.troops[u.type].vault ? hop(b, x, y) : 0,
         targeted: !!threatened && threatened.has(u.id)
       });
     });
@@ -959,7 +1019,8 @@
       const f = total > 0 ? done / total : 1;
       const z0 = shot.z, z1 = bld ? (TOP[tgt.type] || 30) * 0.45 : tgt.air ? 30 : 10;
       const d = left || 1;
-      scene.projectiles.push({ k: p.k, x: p.x, y: p.y, z: z0 + (z1 - z0) * f, dx: (tx - p.x) / d * 0.5, dy: (ty - p.y) / d * 0.5, dz: total > 0 ? (z0 - z1) / total * 0.5 : 0 });
+      const arc = shot.arc ? 4 * f * (1 - f) * shot.arc : 0;    // lobbed shots rise and fall
+      scene.projectiles.push({ k: p.k, x: p.x, y: p.y, z: z0 + (z1 - z0) * f + arc, dx: (tx - p.x) / d * 0.5, dy: (ty - p.y) / d * 0.5, dz: total > 0 ? (z0 - z1) / total * 0.5 : 0, f: f });
     });
     scene.unitBars = true;
   }
@@ -988,7 +1049,7 @@
       if (live && !c.dead) {
         o.targeted = targeted.has(c.id);
         if (c.atk && c.func && c.tgt) {
-          if (c.atk.kind === 'frost') o.engaged = true;
+          if (AURA[c.atk.kind]) o.engaged = true;
           else if (Bt.unit(b, c.tgt)) { o.engaged = true; threatened.add(c.tgt); }
         }
       }
@@ -1001,7 +1062,15 @@
       scene.buildings.push(o);
     });
     battleUnits(b, scene, TEAM, live ? threatened : null);
-    if (live && Bt.poolTotal(G.battle) > 0) {
+    scene.zones = b.zones.map(function (z) { return { k: z.k, x: z.x, y: z.y, r: z.r, left: z.left / Bt.TR }; });
+    const spell = live && C.spells[G.troopSel] && G.battle.spells[G.troopSel] > 0 ? C.spells[G.troopSel] : null;
+    if (spell) {
+      // aiming a spell: its circle follows the pointer and the red zone does not apply
+      if (G.pointer) {
+        const t = R.toTile(G.pointer.x, G.pointer.y);
+        scene.ranges.push({ x: t[0], y: t[1], r: spell.radius, col: CS.Sprites.alpha(spell.color, 0.95), fill: CS.Sprites.alpha(spell.color, 0.12) });
+      }
+    } else if (live && Bt.poolTotal(G.battle) > 0) {
       // the no-deploy tint is strongest while scouting and after a refused drop; mid-fight only its edge stays
       const flash = Math.max(0, 1 - (G.time - G.zoneFlash) / 0.9);
       const scouting = G.battle.phase === 'scout';
@@ -1027,6 +1096,7 @@
   // ---------------------------------------------------------------- battle events -> effects and sound
   // Every effect here answers a real event from the battle simulation; nothing is staged.
   const GOLD = '#ffd45a', VIOLET = '#d6a8ff', HURT = '#ff9a85', HIT = '#fff1d0';
+  const FIRE_SFX = { flak: 'blaster', rail: 'mortar', volley: 'spire', barrage: 'mortar' };
   function battleEvents(b, events) {
     const home = b.kind === 'defense';
     events.forEach(function (e) {
@@ -1069,17 +1139,44 @@
             const dx = Math.cos(a), dy = Math.sin(a);
             R.emit('muzzle', e.x + dx * M[0], e.y + dy * M[0], M[1], { dx: dx, dy: dy });
           }
-          sfx(e.k === 'flak' ? 'blaster' : e.k === 'rail' ? 'mortar' : e.k);
+          sfx(FIRE_SFX[e.k] || e.k);
           break;
         }
-        case 'boom': R.emit('boom', e.x, e.y, e.k === 'flak' ? 30 : 4, { r: e.r, col: e.k === 'mine' ? '#ffe36e' : undefined }); sfx(e.k === 'shell' ? 'mortarHit' : 'boom'); break;
+        case 'boom':
+          if (e.k === 'drake') { R.emit('breath', e.x0, e.y0, 26, { x: e.x, y: e.y, z: 6 }); sfx('flame'); }
+          R.emit('boom', e.x, e.y, e.k === 'flak' ? 30 : 4, { r: e.r, col: e.k === 'mine' ? '#ffe36e' : undefined });
+          if (e.k !== 'drake') sfx(e.k === 'shell' ? 'mortarHit' : 'boom');
+          break;
+        case 'breath': R.recoil(e.id); R.emit('breath', e.x0, e.y0, 40, { x: e.x, y: e.y, z: 10, wide: 1 }); sfx('flame'); break;
+        case 'chain': {
+          const pts = [[e.pts[0], e.pts[1], 70]];
+          for (let i = 2; i < e.pts.length; i += 2) pts.push([e.pts[i], e.pts[i + 1], 14]);
+          R.emit('zap', 0, 0, 0, { pts: pts });
+          R.pulse(e.id);
+          sfx('zap');
+          break;
+        }
+        case 'spell': {
+          const P = C.spells[e.k];
+          if (e.k === 'thunder') {
+            R.emit('zap', 0, 0, 0, { pts: [[e.x + 0.6, e.y - 0.6, 420], [e.x - 0.2, e.y + 0.1, 220], [e.x + 0.15, e.y, 90], [e.x, e.y, 0]], life: 0.35, w: 1.6 });
+            R.emit('boom', e.x, e.y, 4, { r: e.r, col: P.color });
+            R.emit('shock', e.x, e.y, 0, { r: e.r * 0.5, shake: 3 });
+            sfx('thunder');
+          } else {
+            R.emit('frost', e.x, e.y, 0, { r: e.r, col: P.color });
+            sfx(e.k === 'heal' ? 'heal' : e.k === 'freeze' ? 'frost' : 'horn');
+          }
+          R.emit('text', e.x, e.y, 50, { text: P.name, col: '#ffe9a6', size: 14, life: 1.2 });
+          break;
+        }
         case 'impact':
           if (e.k === 'orb') R.emit('spark', e.x, e.y, 14, { col: '#d79bff' });
           else if (e.k === 'ball' || e.k === 'slug') R.emit('spark', e.x, e.y, 12, { col: '#ffcf70' });
           else R.emit('spark', e.x, e.y, 10, { col: '#f3ecdc' });
           break;
         case 'mineArm': R.emit('text', e.x, e.y, 20, { text: '!', col: '#ff5a4a', size: 18 }); sfx('mine'); break;
-        case 'frost': R.pulse(e.id); sfx('frost'); break;
+        case 'frost': R.pulse(e.id); sfx(e.k === 'flame' ? 'flame' : e.k === 'thorns' ? 'wallBreak' : 'frost'); break;
         case 'heal': R.emit('heal', e.x, e.y, 0, { r: e.r }); sfx('heal'); break;
         case 'charge': R.emit('spark', e.x, e.y, 12, { col: '#ffe08a' }); break;
         case 'ability': {

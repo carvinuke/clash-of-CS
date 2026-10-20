@@ -39,7 +39,8 @@
    * o: { kind: 'attack'|'defense', seed, biome, name, targetId, attackerId,
    *      buildings: [{id,type,level,x,y,w,h,rot,hp?,func?,loot?}], troops: {type: n},
    *      troopLevels: {type: lv}, timeLimit (s), maxDestruction, defHpMult, defDmgMult,
-   *      guards: [{type, lv, x, y}] (heroes defending the home base) }
+   *      guards: [{type, lv, x, y}] (heroes defending the home base),
+   *      spells: {type: n}, spellLv (Spell Forge level) }
    */
   B.create = function (o) {
     const b = {
@@ -63,8 +64,10 @@
       destroyed: 0, total: 0, coreDown: false,
       ended: false, endReason: null,
       stats: { dmg: {} },
+      spells: {}, spellLv: o.spellLv || 1, cast: {}, zones: [],
       meta: o.meta || {}
     };
+    Object.keys(o.spells || {}).forEach(function (t) { if (o.spells[t] > 0) b.spells[t] = o.spells[t]; });
     Object.keys(o.troops || {}).forEach(function (t) { if (o.troops[t] > 0) b.pool[t] = o.troops[t]; });
     o.buildings.forEach(function (s) { addBuilding(b, s, o); });
     (o.guards || []).forEach(function (g) { addGuard(b, g); });
@@ -98,7 +101,8 @@
         dmg: L.dmg * (o.defDmgMult || 1), splash: A.splash || 0, slow: L.slow || 0, ground: !!A.ground, air: !!A.air,
         speed: (A.projectileSpeed || 0) * TICK,
         flight: Math.round((A.flight || 0) * TR), delay: Math.round((A.delay || 0) * TR),
-        rampPerSec: A.rampPerSec || 0, rampMax: A.rampMax || 1
+        rampPerSec: A.rampPerSec || 0, rampMax: A.rampMax || 1,
+        shots: A.shots || 1, spread: A.spread || 0, chain: A.chain || 0, jump: A.jump || 0, falloff: A.falloff || 1, cone: A.cone || 0
       };
       c.cd = Math.floor(rnd(b) * c.atk.period);
     }
@@ -118,6 +122,8 @@
 
   // ---------------------------------------------------------------- runtime (not saved)
   function hydrate(b) {
+    // snapshots saved before spells existed
+    if (!b.spells) { b.spells = {}; b.cast = {}; b.zones = []; b.spellLv = 1; }
     b._rt = {
       occ: new Int32Array(S * S), deploy: new Uint8Array(S * S),
       bById: new Map(), units: new Map(), pathCache: new Map(), cover: new Map(),
@@ -173,6 +179,11 @@
   };
 
   B.building = function (b, id) { return b._rt.bById.get(id) || null; };
+  B.buildingAt = function (b, tx, ty) {
+    if (tx < 0 || ty < 0 || tx >= S || ty >= S) return null;
+    const o = b._rt.occ[ty * S + tx];
+    return o ? b.buildings[o - 1] : null;
+  };
   B.unit = function (b, id) { return b._rt.units.get(id) || null; };
   B.guard = function (b, id) {
     const gs = b.guards || [];
@@ -232,6 +243,61 @@
   };
 
   B.begin = function (b) { if (b.phase === 'scout') b.phase = 'fight'; };
+
+  /*
+   * Casts a brewed spell at (x, y); spells may land anywhere, the red zone included. Thunder
+   * strikes at once; the other spells leave a zone that works each tick until it runs out.
+   */
+  B.cast = function (b, type, x, y) {
+    const P = C.spells[type];
+    if (b.ended) return { ok: false, reason: 'ended' };
+    if (!P || !(b.spells[type] > 0)) return { ok: false, reason: 'none' };
+    if (!(x >= 0 && y >= 0 && x < S && y < S)) return { ok: false, reason: 'zone' };
+    const i = U.clamp(b.spellLv, 1, 5) - 1;
+    b.spells[type]--;
+    b.cast[type] = (b.cast[type] || 0) + 1;
+    b.deployedAny = true;
+    if (b.phase === 'scout') b.phase = 'fight';
+    ev(b, { t: 'spell', k: type, x: x, y: y, r: P.radius });
+    if (type === 'thunder') {
+      b.buildings.forEach(function (c) {
+        if (!c.dead && !c.trap && U.distToRect(x, y, c.x, c.y, c.w, c.h) <= P.radius) hurtBuilding(b, c, P.dmg[i]);
+      });
+    } else {
+      const sec = Array.isArray(P.sec) ? P.sec[i] : P.sec;
+      b.zones.push({ k: type, x: x, y: y, r: P.radius, left: Math.round(sec * TR), lv: i + 1 });
+    }
+    return { ok: true };
+  };
+
+  B.spellsLeft = function (b) {
+    let n = 0;
+    Object.keys(b.spells).forEach(function (k) { n += b.spells[k]; });
+    return n;
+  };
+
+  // Spell zones: heal and rage work on the attacking troops, freeze on the defenses and traps.
+  function runZones(b) {
+    let w = 0;
+    for (let k = 0; k < b.zones.length; k++) {
+      const z = b.zones[k], P = C.spells[z.k], i = z.lv - 1, r2 = z.r * z.r;
+      if (z.k === 'freeze') {
+        b.buildings.forEach(function (c) {
+          if (c.atk && !c.dead && U.distToRect(z.x, z.y, c.x, c.y, c.w, c.h) <= z.r) { c.frz = 2; c.ramp = 0; }
+        });
+      } else {
+        b.units.forEach(function (u) {
+          if (u.dead) return;
+          const dx = u.x - z.x, dy = u.y - z.y;
+          if (dx * dx + dy * dy > r2) return;
+          if (z.k === 'heal') u.hp = Math.min(u.maxHp, u.hp + P.hps[i] * TICK);
+          else { u.rgT = 2; u.rgD = P.dmgMult[i]; u.rgS = P.speedMult[i]; }
+        });
+      }
+      if (--z.left > 0) b.zones[w++] = z;
+    }
+    b.zones.length = w;
+  }
 
   // The deployed, living hero of this type, or null.
   B.hero = function (b, type) {
@@ -325,8 +391,8 @@
       });
       if (second) points.push(second);
     }
-    const order = ['colossus', 'bruiser', 'lancer', 'demo', 'scout', 'gyro', 'mage', 'ranger', 'mender'];
-    const delays = { colossus: 0, bruiser: 0, lancer: 1.0, demo: 1.6, scout: 2.2, gyro: 2.6, mage: 3.0, ranger: 3.4, mender: 3.8 };
+    const order = ['colossus', 'bruiser', 'lancer', 'vaulter', 'demo', 'scout', 'drake', 'gyro', 'trebuchet', 'mage', 'ranger', 'mender'];
+    const delays = { colossus: 0, bruiser: 0, lancer: 1.0, vaulter: 1.2, demo: 1.6, scout: 2.2, drake: 2.4, gyro: 2.6, trebuchet: 2.8, mage: 3.0, ranger: 3.4, mender: 3.8 };
     let n = 0;
     order.forEach(function (type) {
       const cnt = army[type] || 0;
@@ -427,7 +493,7 @@
   const RALLY = C.heroes.marshal.ability, CLOAK = C.heroes.huntress.ability;
 
   function moveToward(u, tx, ty) {
-    const sp = u.speed * (u.slowT > 0 ? 1 - u.slowF : 1) * (u.buffT > 0 ? RALLY.speedMult : 1);
+    const sp = u.speed * (u.slowT > 0 ? 1 - u.slowF : 1) * (u.buffT > 0 ? RALLY.speedMult : 1) * (u.rgT > 0 ? u.rgS : 1);
     const dx = tx - u.x, dy = ty - u.y;
     const d = Math.sqrt(dx * dx + dy * dy);
     if (d > 1e-6) u.face = dx - dy >= 0 ? 1 : -1;
@@ -473,6 +539,7 @@
     let path = b._rt.pathCache.get(key);
     if (!path) {
       const cost = function (c) {
+        if (c.wall && T.vault) return 0.3;
         const brk = c.hp / dpsVs(u, T, c);
         return c.wall ? brk : brk + C.battle.wallBreakPenalty;
       };
@@ -573,6 +640,7 @@
     if (T.bonusVsResource && c.res) dmg *= T.bonusVsResource;
     if (u.buffT > 0) dmg *= RALLY.dmgMult;
     if (u.hideT > 0) dmg *= CLOAK.dmgMult;
+    if (u.rgT > 0) dmg *= u.rgD;
     if (T.charge && u.chg !== c.id) { u.chg = c.id; dmg *= T.charge; ev(b, { t: 'charge', x: u.x, y: u.y }); }
     if (T.projectile) {
       b.proj.push({ id: b.nextId++, k: T.projectile, x: u.x, y: u.y, sx: u.x, sy: u.y, tx: 0, ty: 0, tgt: c.id, tb: 1, dmg: dmg, splash: T.splash || 0, spd: 10 * TICK, t: 0, dur: 0, src: 0 });
@@ -583,7 +651,7 @@
       b.buildings.forEach(function (o) {
         if (!o.dead && !o.trap && U.distToRect(hx, hy, o.x, o.y, o.w, o.h) <= T.splash) hurtBuilding(b, o, dmg);
       });
-      ev(b, { t: 'boom', x: hx, y: hy, r: T.splash, k: u.type });
+      ev(b, { t: 'boom', x: hx, y: hy, r: T.splash, k: u.type, x0: u.x, y0: u.y });
     } else {
       hurtBuilding(b, c, dmg);
       ev(b, { t: 'hit', x: U.clamp(u.x, c.x, c.x + c.w), y: U.clamp(u.y, c.y, c.y + c.h), k: u.type });
@@ -601,7 +669,7 @@
     const o = b._rt.occ[idx];
     if (o) {
       const c = b.buildings[o - 1];
-      if (!c.dead && c.id !== t.id) { u.obs = c.id; return; }
+      if (!c.dead && c.id !== t.id && !(c.wall && T.vault)) { u.obs = c.id; return; }
     }
     if (moveToward(u, (idx % S) + 0.5 + u.ox, ((idx / S) | 0) + 0.5 + u.oy)) u.pi++;
   }
@@ -718,6 +786,7 @@
     if (u.slowT > 0 && --u.slowT === 0) u.slowF = 0;
     if (u.buffT > 0) u.buffT--;
     if (u.hideT > 0) u.hideT--;
+    if (u.rgT > 0) u.rgT--;
     if (u.abT > 0) rally(b, u);
     const T = C.troops[u.type];
     if (T.target === 'troop') { updateMender(b, u, T); return; }
@@ -799,11 +868,47 @@
     return best;
   }
 
-  const PROJ = { blaster: 'ball', flak: 'flak', rail: 'slug' };
+  // Up to n different attackers in range, nearest first (ties by id, so the pick is deterministic).
+  function pickSeveral(b, A, cx, cy, n) {
+    const list = [];
+    b.units.forEach(function (u) {
+      if (!canHit(A, u)) return;
+      const d = U.dist(cx, cy, u.x, u.y);
+      if (d <= A.range && d >= A.minRange) list.push({ u: u, d: d });
+    });
+    list.sort(function (p, q) { return p.d - q.d || p.u.id - q.u.id; });
+    return list.slice(0, n).map(function (p) { return p.u; });
+  }
+
+  // Lightning that jumps from its first target to the nearest unhit attackers within A.jump.
+  function chainStrike(b, d, A, t, cx, cy) {
+    const hit = [t], pts = [cx, cy, t.x, t.y];
+    let cur = t, dmg = A.dmg;
+    hurtUnit(b, t, dmg, d);
+    for (let k = 1; k < A.chain; k++) {
+      let next = null, bd = A.jump;
+      b.units.forEach(function (u) {
+        if (!canHit(A, u) || hit.indexOf(u) >= 0) return;
+        const dd = U.dist(cur.x, cur.y, u.x, u.y);
+        if (dd <= bd) { bd = dd; next = u; }
+      });
+      if (!next) break;
+      dmg *= A.falloff;
+      hit.push(next);
+      pts.push(next.x, next.y);
+      hurtUnit(b, next, dmg, d);
+      cur = next;
+    }
+    ev(b, { t: 'chain', id: d.id, pts: pts });
+  }
+
+  const PROJ = { blaster: 'ball', flak: 'flak', rail: 'slug', volley: 'shard' };
+  const AURA = { frost: 1, flame: 1, thorns: 1 };   // pulse damage to everything in range
 
   function updateDefense(b, d) {
     const A = d.atk;
     if (!d.func || d.spent) return;
+    if (d.frz > 0) { d.frz--; if (A.kind === 'lance' || A.kind === 'cone') d.tgt = 0; return; }   // Frostbind
     const cx = d.x + d.w / 2, cy = d.y + d.h / 2;
     if (A.kind === 'mine') {
       if (d.armed) {
@@ -823,31 +928,37 @@
       return;
     }
     if (d.cd > 0) d.cd--;
-    if (A.kind === 'frost') {
+    if (AURA[A.kind]) {
       if (d.cd > 0) return;
       let hit = 0;
       b.units.forEach(function (u) {
         if (!canHit(A, u) || U.dist(cx, cy, u.x, u.y) > A.range) return;
         hurtUnit(b, u, A.dmg, d);
-        u.slowT = A.period + 6;
-        u.slowF = Math.max(u.slowF, A.slow);
+        if (A.slow) {
+          u.slowT = A.period + 6;
+          u.slowF = Math.max(u.slowF, A.slow);
+        }
         hit++;
       });
       d.cd = A.period;
       d.tgt = hit ? 1 : 0;
-      if (hit) ev(b, { t: 'frost', id: d.id, x: cx, y: cy, r: A.range });
+      if (hit) ev(b, { t: 'frost', id: d.id, x: cx, y: cy, r: A.range, k: A.kind });
       return;
     }
     let t = d.tgt ? b._rt.units.get(d.tgt) : null;
     if (t && (!canHit(A, t) || !inDefRange(A, cx, cy, t))) t = null;
-    if (A.kind === 'mortar') {
+    if (A.kind === 'mortar' || A.kind === 'barrage') {
       if (d.cd > 0) return;
       t = pickCluster(b, A, cx, cy);
       if (!t) return;
       d.cd = A.period;
       d.tgt = t.id;
-      b.proj.push({ id: b.nextId++, k: 'shell', x: cx, y: cy, sx: cx, sy: cy, tx: t.x, ty: t.y, tgt: 0, tb: 0, dmg: A.dmg, splash: A.splash, spd: 0, t: 0, dur: Math.max(1, A.flight), src: d.id });
-      ev(b, { t: 'fire', id: d.id, k: 'mortar', x: cx, y: cy });
+      // a barrage scatters its extra shells around the aim point
+      for (let k = 0; k < A.shots; k++) {
+        const tx = k ? U.clamp(t.x + (rnd(b) - 0.5) * A.spread, 0, S) : t.x, ty = k ? U.clamp(t.y + (rnd(b) - 0.5) * A.spread, 0, S) : t.y;
+        b.proj.push({ id: b.nextId++, k: 'shell', x: cx, y: cy, sx: cx, sy: cy, tx: tx, ty: ty, tgt: 0, tb: 0, dmg: A.dmg, splash: A.splash, spd: 0, t: 0, dur: Math.max(1, A.flight + k * 3), src: d.id });
+      }
+      ev(b, { t: 'fire', id: d.id, k: A.kind, x: cx, y: cy });
       return;
     }
     if (A.kind === 'rail' && d.cd === 0) t = pickToughest(b, A, cx, cy);
@@ -862,7 +973,22 @@
     d.tgt = t ? t.id : 0;
     if (!t || d.cd > 0) return;
     d.cd = A.period;
-    b.proj.push({ id: b.nextId++, k: PROJ[A.kind] || 'bolt', x: cx, y: cy, sx: cx, sy: cy, tx: 0, ty: 0, tgt: t.id, tb: 0, dmg: A.dmg, splash: A.splash, spd: A.speed, t: 0, dur: 0, src: d.id });
+    if (A.kind === 'chain') { chainStrike(b, d, A, t, cx, cy); return; }
+    if (A.kind === 'cone') {
+      // fire breath: burns every attacker in range within the cone around the aim
+      const ax = t.x - cx, ay = t.y - cy, al = Math.hypot(ax, ay) || 1;
+      b.units.forEach(function (u) {
+        if (!canHit(A, u)) return;
+        const dx = u.x - cx, dy = u.y - cy, dl = Math.hypot(dx, dy);
+        if (dl <= A.range && (dl < 0.5 || (dx * ax + dy * ay) / (dl * al) >= A.cone)) hurtUnit(b, u, A.dmg, d);
+      });
+      ev(b, { t: 'breath', id: d.id, x0: cx, y0: cy, x: cx + ax / al * A.range, y: cy + ay / al * A.range, k: 'idol' });
+      return;
+    }
+    const targets = A.shots > 1 ? pickSeveral(b, A, cx, cy, A.shots) : [t];
+    targets.forEach(function (u) {
+      b.proj.push({ id: b.nextId++, k: PROJ[A.kind] || 'bolt', x: cx, y: cy, sx: cx, sy: cy, tx: 0, ty: 0, tgt: u.id, tb: 0, dmg: A.dmg, splash: A.splash, spd: A.speed, t: 0, dur: 0, src: d.id });
+    });
     ev(b, { t: 'fire', id: d.id, k: A.kind, x: cx, y: cy });
   }
 
@@ -997,6 +1123,7 @@
     if (b.ended || b.phase !== 'fight') return;
     b.tick++;
     if (b.ai.length) runAI(b);
+    if (b.zones.length) runZones(b);
     const units = b.units;
     for (let i = 0; i < units.length; i++) if (!units[i].dead) updateUnit(b, units[i]);
     const gs = b.guards || [];
@@ -1044,7 +1171,7 @@
       coreDown: b.coreDown, loot: { credits: Math.floor(b.loot.credits), energy: Math.floor(b.loot.energy) },
       lost: Object.assign({}, b.lost), deployed: Object.assign({}, b.deployed), survived: survived,
       destroyed: b.destroyed, total: b.total, reason: b.endReason, seconds: b.tick / TR,
-      dmg: Object.assign({}, b.stats.dmg), heroHp: heroHp,
+      dmg: Object.assign({}, b.stats.dmg), heroHp: heroHp, cast: Object.assign({}, b.cast),
       guards: (b.guards || []).map(function (g) { return { type: g.type, hp: g.hp / g.maxHp, dealt: Math.round(g.dealt) }; })
     };
   };
