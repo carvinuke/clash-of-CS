@@ -49,7 +49,7 @@
 
   NPC.unlockedTier = function (state) {
     let t = 1;
-    while (t < 5 && NPC.winsInTier(state, t) >= C.world.unlockWins) t++;
+    while (t < C.tiers.length - 1 && NPC.winsInTier(state, t) >= C.world.unlockWins) t++;
     return t;
   };
 
@@ -165,7 +165,7 @@
       return r;
     }
     let wallBudget = rng.int(T.walls[0], T.walls[1]) + fortify * 8;
-    const wallLv = U.clamp(rng.int(T.wallLv[0], T.wallLv[1]) + (fortify >= 1 ? 1 : 0), 1, 6);
+    const wallLv = U.clamp(rng.int(T.wallLv[0], T.wallLv[1]) + (fortify >= 1 ? 1 : 0), 1, Base.maxLevel('wall'));
     // Places walls on the perimeter of a rectangle, leaving evenly spread gaps when short on walls.
     function wallRing(r) {
       const x0 = Math.max(a0, r.x0), y0 = Math.max(a0, r.y0), x1 = Math.min(a1 - 1, r.x1), y1 = Math.min(a1 - 1, r.y1);
@@ -233,7 +233,7 @@
       }
     });
     rng.shuffle(defs);
-    const coreLv = U.clamp(T.core + (fortify >= 2 ? 1 : 0), 1, 6);
+    const coreLv = U.clamp(T.core + (fortify >= 2 ? 1 : 0), 1, Base.maxLevel('core'));
     const mid = SZ / 2;
     const core = put('core', coreLv, mid - 2 + rng.int(-1, 1), mid - 2 + rng.int(-1, 1), 0);
     const ccx = core.x + 2, ccy = core.y + 2;
@@ -332,12 +332,12 @@
       else wallLine(d.x + d.w, d.y, d.x + d.w, d.y + d.h - 1);
     }
 
-    // Hidden mines go on open tiles near the defenses or the core.
+    // Hidden traps go on open tiles near the defenses or the core.
     traps.forEach(function (it) {
       const anchor = defBuildings.length ? rng.pick(defBuildings) : core;
       for (let tries = 0; tries < 40; tries++) {
         const x = Math.round(anchor.x + anchor.w / 2 + rng.range(-4, 4)), y = Math.round(anchor.y + anchor.h / 2 + rng.range(-4, 4));
-        if (fits(x, y, 1, 1, 0)) { put('mine', it.level, x, y, 0); break; }
+        if (fits(x, y, 1, 1, 0)) { put(it.type, it.level, x, y, 0); break; }
       }
     });
     return out;
@@ -353,7 +353,7 @@
       return o;
     });
     ['credits', 'energy'].forEach(function (r) {
-      const storages = list.filter(function (b) { return C.buildings[b.type].stores === r; });
+      const storages = list.filter(function (b) { return C.buildings[b.type].stores === r || C.buildings[b.type].storesBoth; });
       const gens = list.filter(function (b) { return C.buildings[b.type].produces === r; });
       const core = list.find(function (b) { return b.type === 'core'; });
       let coreShare = 0.2;

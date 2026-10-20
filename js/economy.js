@@ -17,7 +17,7 @@
       if (b.level < 1 || b.ruined && b.type !== 'core') return;
       const def = C.buildings[b.type];
       const L = Base.levelDef(b.type, b.level);
-      if (b.type === 'core') { cap.credits += L.store; cap.energy += L.store; }
+      if (b.type === 'core' || def.storesBoth) { cap.credits += L.store; cap.energy += L.store; }
       else if (def.stores) cap[def.stores] += L.capacity;
     });
     const m = CS.Research.mult(state, 'compression');

@@ -121,6 +121,60 @@ raid(CS.NPC.def('glimmerfen'), { lancer: 8, gyro: 6, colossus: 1, ranger: 10 });
   }
 }
 
+// Command Core Lv 7-9: every per-core table covers all core levels, and level gates stay within them.
+{
+  const C = CS.CONFIG, maxCore = C.buildings.core.levels.length;
+  ok(maxCore === 9, 'Command Core has 9 levels');
+  const short = Object.keys(C.buildings).filter(t => C.buildings[t].max.length !== maxCore);
+  ok(!short.length, 'every building has a limit for each core level ' + short.join(','));
+  const gates = Object.keys(C.buildings).filter(t => C.buildings[t].levels.some(L => L.core > maxCore));
+  ok(!gates.length, 'no level needs a core level that does not exist ' + gates.join(','));
+  ok([C.grid.buildAreaByCore, C.attacks.armySpaceByCore, C.attacks.troopLevelByCore, C.attacks.steal.capByCore].every(a => a.length === maxCore), 'per-core tables have 9 entries');
+  for (const h of C.heroOrder) {
+    const n = C.buildings[C.heroes[h].building].levels.length, T = C.troops[h], A = C.heroes[h].ability;
+    ok(T.hp.length === n && T.dmg.length === n && C.heroes[h].recoverMin.length === n && A.sec.length === n && A.heal.length === n && (!A.summonN || A.summonN.length === n), h + ' has stats for all ' + n + ' home levels');
+  }
+  const g = CS.State.newGame(now);
+  g.base.buildings.find(b => b.type === 'core').level = 9;
+  ok(CS.Base.maxCount('wall', 9) === 250 && CS.Base.buildArea(9).size === 42, 'core 9: 250 walls and a 42x42 build area');
+  const cap0 = CS.Eco.capacity(g);
+  CS.Base.newBuilding(g, 'bunker', 12, 12, 0, 1, 'active');
+  const cap1 = CS.Eco.capacity(g);
+  ok(cap1.credits > cap0.credits && cap1.energy > cap0.energy, 'Reserve Bunker raises both storage caps');
+  ok(CS.NPC.unlockedTier(g) === 1 && CS.CONFIG.tiers.length === 7, 'tier 6 exists and starts hidden');
+}
+
+// New defenses: the Skyburst Battery only hits flyers, the Sky Snare only triggers on flyers,
+// and the Longshot Bastion fires at the toughest attacker in range.
+{
+  const mk = (type, troops, level) => CS.Battle.create({ kind: 'attack', seed: 5, timeLimit: 150, troops, troopLevels: {},
+    buildings: [{ id: 1, type: 'core', level: 1, x: 20, y: 20, w: 4, h: 4 }, { id: 2, type, level: level || 1, x: 14, y: 21, w: type === 'snare' ? 1 : 3, h: type === 'snare' ? 1 : 3 }] });
+  let b = mk('flak', { scout: 6 });
+  for (let i = 0; i < 6; i++) CS.Battle.deploy(b, 'scout', 8.5, 20 + i * 0.5);
+  CS.Battle.runToEnd(b);
+  ok(!CS.Battle.result(b).dmg.flak && !CS.Battle.result(b).lost.scout, 'Skyburst Battery ignores ground troops');
+  b = mk('flak', { gyro: 3 });
+  for (let i = 0; i < 3; i++) CS.Battle.deploy(b, 'gyro', 8.5, 21 + i * 0.4);
+  CS.Battle.runToEnd(b);
+  let res = CS.Battle.result(b);
+  ok(res.dmg.flak > 0 && res.lost.gyro > 0, 'Skyburst Battery shoots gyrocopters down (' + Math.round(res.dmg.flak) + ' dmg, ' + res.lost.gyro + ' lost)');
+  b = mk('snare', { scout: 2 }, 1);
+  CS.Battle.deploy(b, 'scout', 8.5, 21.5); CS.Battle.deploy(b, 'scout', 8.5, 22);
+  CS.Battle.runToEnd(b);
+  ok(!CS.Battle.result(b).dmg.snare, 'Sky Snare does not trigger on ground troops');
+  b = mk('snare', { gyro: 1 }, 1);
+  CS.Battle.deploy(b, 'gyro', 8.5, 21.5);
+  CS.Battle.runToEnd(b);
+  ok(CS.Battle.result(b).dmg.snare > 0, 'Sky Snare hits a gyrocopter');
+  b = mk('rail', { scout: 6, bruiser: 1 });
+  CS.Battle.deploy(b, 'bruiser', 6.5, 22);
+  for (let i = 0; i < 6; i++) CS.Battle.deploy(b, 'scout', 6.5, 19 + i * 0.5);
+  const rail = b.buildings.find(c => c.type === 'rail');
+  let firstTarget = null;
+  for (let i = 0; i < 600 && !firstTarget; i++) { CS.Battle.fastForward(b, 1); const p = b.proj.find(q => q.src === rail.id); if (p) firstTarget = CS.Battle.unit(b, p.tgt); }
+  ok(firstTarget && firstTarget.type === 'bruiser', 'Longshot Bastion targets the toughest attacker first (' + (firstTarget && firstTarget.type) + ')');
+}
+
 // Heroes: status, abilities, summons that never join the army, and recovery after a raid.
 {
   const h = CS.State.newGame(now);

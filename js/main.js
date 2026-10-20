@@ -751,12 +751,14 @@
     return (set.has(y * S + x + 1) ? 1 : 0) | (set.has((y + 1) * S + x) ? 2 : 0);
   }
 
+  const AIMED = { blaster: 1, spire: 1, mortar: 1, flak: 1, rail: 1 };   // defenses that turn toward their target
+
   function aimInfo(b, c, info, dt, beams) {
     const A = c.atk;
     if (!A) return;
     const tgt = c.tgt ? Bt.unit(b, c.tgt) : null;
     const cx = c.x + c.w / 2, cy = c.y + c.h / 2;
-    if (A.kind === 'blaster' || A.kind === 'spire' || A.kind === 'mortar') {
+    if (AIMED[A.kind]) {
       info.angle = R.aimAngle(c.id, tgt ? Math.atan2(tgt.y - cy, tgt.x - cx) : null, dt);
       info.recoil = R.recoilAmount(c.id);
     } else if (A.kind === 'lance') {
@@ -765,6 +767,8 @@
     } else if (A.kind === 'frost') info.pulse = R.pulseAmount(c.id);
     else if (A.kind === 'mine') { info.hidden = false; info.triggered = !c.armed; }
   }
+
+  const MUZZLE = { blaster: [1.25, 29], mortar: [0.45, 38], flak: [0.55, 50], rail: [1.6, 40] };   // barrel length (tiles), muzzle height
 
   function idleAngle(id) { return Math.sin(G.time * 0.35 + id * 1.7) * 1.4 + 0.8; }
 
@@ -798,7 +802,7 @@
         if (bb.trap && bb.spent) return;
       } else {
         if (!b.ruined && b.dmg > 0) o.hpFrac = Base.hp(st, b) / Base.maxHp(st, b);
-        if (def.attack && (def.attack.kind === 'blaster' || def.attack.kind === 'spire' || def.attack.kind === 'mortar')) info.angle = idleAngle(b.id);
+        if (def.attack && AIMED[def.attack.kind]) info.angle = idleAngle(b.id);
       }
       if (G.place && G.place.moveId === b.id) o.alpha = 0.3;
       if (def.produces) {
@@ -806,6 +810,7 @@
         info.fill = b.stored / L.buffer;
         if (!bat && Eco.ready(b)) o.bubble = def.produces;
       } else if (def.stores) info.fill = cap[def.stores] ? st.res[def.stores] / cap[def.stores] : 0;
+      else if (def.storesBoth) info.fill = (st.res.credits + st.res.energy) / Math.max(1, cap.credits + cap.energy);
       else if (b.type === 'garrison') { info.troops = units; info.troopTypes = types; }
       else if (b.type === 'lab') info.busy = !!ra;
       else if (b.type === 'station') { info.idle = idle > 0 && !b.ruined; if (info.idle) idle--; }
@@ -867,7 +872,7 @@
 
   // Projectile heights in px: where each shot leaves its weapon (the blaster muzzle, the spire's
   // ballista, a troop's hands) and how high on the target it lands.
-  const SHOT = { ball: { z: 29, hide: 1.15 }, bolt: { z: 82, hide: 0.95 }, arrow: { z: 13, hide: 0 }, orb: { z: 16, hide: 0 } };
+  const SHOT = { ball: { z: 29, hide: 1.15 }, bolt: { z: 82, hide: 0.95 }, arrow: { z: 13, hide: 0 }, orb: { z: 16, hide: 0 }, flak: { z: 50, hide: 0.55 }, slug: { z: 40, hide: 1.6 } };
 
   function battleUnits(b, scene, team, threatened) {
     const a = U.clamp(G.acc / Bt.TICK, 0, 1);
@@ -903,7 +908,7 @@
       if (done < shot.hide) return;          // still inside the weapon that fired it
       const total = done + left;
       const f = total > 0 ? done / total : 1;
-      const z0 = shot.z, z1 = bld ? (TOP[tgt.type] || 30) * 0.45 : 10;
+      const z0 = shot.z, z1 = bld ? (TOP[tgt.type] || 30) * 0.45 : tgt.air ? 30 : 10;
       const d = left || 1;
       scene.projectiles.push({ k: p.k, x: p.x, y: p.y, z: z0 + (z1 - z0) * f, dx: (tx - p.x) / d * 0.5, dy: (ty - p.y) / d * 0.5, dz: total > 0 ? (z0 - z1) / total * 0.5 : 0 });
     });
@@ -939,7 +944,7 @@
         }
       }
       const def = C.buildings[c.type];
-      if (def.produces || def.stores) info.fill = c.lootLeft ? Math.min(1, (c.lootLeft.credits + c.lootLeft.energy) / 2500) : 0.3;
+      if (def.produces || def.stores || def.storesBoth) info.fill = c.lootLeft ? Math.min(1, (c.lootLeft.credits + c.lootLeft.energy) / 2500) : 0.3;
       else if (c.type === 'garrison') { info.troops = 3; info.troopTypes = NPC.faction(s).troops; }
       else if (c.type === 'station') info.idle = !c.dead;
       aimInfo(b, c, info, dt, scene.beams);
@@ -996,7 +1001,7 @@
           if (!wall) { R.emit('boom', e.x, e.y, 10, { r: Math.min(2, e.w / 2) }); R.smolder(e.x, e.y, e.w); }
           if (e.lc > 0) R.damage('lc' + e.id, e.x - 0.15, e.y + 0.45, (TOP[e.k] || 30) * 0.45 + 16, e.lc, home ? HURT : GOLD, home ? '−' : '+');
           if (e.le > 0) R.damage('le' + e.id, e.x - 0.45, e.y + 0.15, (TOP[e.k] || 30) * 0.45 + 28, e.le, home ? HURT : VIOLET, home ? '−' : '+');
-          if (!home && (def.produces || def.stores || e.k === 'core')) R.emit('coins', e.x, e.y, 30, { col: def.produces === 'energy' || def.stores === 'energy' ? '#b07cff' : '#f2c23a' });
+          if (!home && (def.produces || def.stores || def.storesBoth || e.k === 'core')) R.emit('coins', e.x, e.y, 30, { col: def.produces === 'energy' || def.stores === 'energy' ? '#b07cff' : '#f2c23a' });
           sfx(wall ? 'wallBreak' : 'destroy');
           if (e.k === 'core') {
             R.emit('shock', e.x, e.y, 0, { r: e.w / 2, shake: 4 });
@@ -1010,17 +1015,18 @@
         case 'fire': {
           R.recoil(e.id);
           const a = R.aimOf(e.id);
-          if (a != null && (e.k === 'blaster' || e.k === 'mortar')) {
-            const L = e.k === 'blaster' ? 1.25 : 0.45, dx = Math.cos(a), dy = Math.sin(a);
-            R.emit('muzzle', e.x + dx * L, e.y + dy * L, e.k === 'blaster' ? 29 : 38, { dx: dx, dy: dy });
+          const M = MUZZLE[e.k];
+          if (a != null && M) {
+            const dx = Math.cos(a), dy = Math.sin(a);
+            R.emit('muzzle', e.x + dx * M[0], e.y + dy * M[0], M[1], { dx: dx, dy: dy });
           }
-          sfx(e.k);
+          sfx(e.k === 'flak' ? 'blaster' : e.k === 'rail' ? 'mortar' : e.k);
           break;
         }
-        case 'boom': R.emit('boom', e.x, e.y, 4, { r: e.r, col: e.k === 'mine' ? '#ffe36e' : undefined }); sfx(e.k === 'shell' ? 'mortarHit' : 'boom'); break;
+        case 'boom': R.emit('boom', e.x, e.y, e.k === 'flak' ? 30 : 4, { r: e.r, col: e.k === 'mine' ? '#ffe36e' : undefined }); sfx(e.k === 'shell' ? 'mortarHit' : 'boom'); break;
         case 'impact':
           if (e.k === 'orb') R.emit('spark', e.x, e.y, 14, { col: '#d79bff' });
-          else if (e.k === 'ball') R.emit('spark', e.x, e.y, 12, { col: '#ffcf70' });
+          else if (e.k === 'ball' || e.k === 'slug') R.emit('spark', e.x, e.y, 12, { col: '#ffcf70' });
           else R.emit('spark', e.x, e.y, 10, { col: '#f3ecdc' });
           break;
         case 'mineArm': R.emit('text', e.x, e.y, 20, { text: '!', col: '#ff5a4a', size: 18 }); sfx('mine'); break;

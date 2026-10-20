@@ -291,8 +291,8 @@
     }
     const hpm = Base.hpMult(st, b.type);
     row('Hit points', Math.round(L.hp * hpm), N && Math.round(N.hp * hpm));
+    if (b.type === 'core' || def.storesBoth) row('Storage (each)', L.store, N && N.store);
     if (b.type === 'core') {
-      row('Storage (each)', L.store, N && N.store);
       row('Build area', C.grid.buildAreaByCore[lv - 1], N && C.grid.buildAreaByCore[lv], function (v) { return v + '&times;' + v; });
     }
     if (def.produces) {
@@ -328,7 +328,7 @@
       else row('Damage', L.dmg * dm, N && N.dmg * dm, function (v) { return Math.round(v) + (A.period ? ' every ' + A.period + 's' : ''); });
       if (L.slow) row('Slow', L.slow * 100, N && N.slow * 100, function (v) { return Math.round(v) + '%'; });
       rows.push('<tr><td>Range</td><td colspan="2">' + (A.minRange ? A.minRange + '&ndash;' : '') + A.range + ' tiles' + (A.splash ? ', splash ' + A.splash : '') + '</td></tr>');
-      rows.push('<tr><td>Targets</td><td colspan="2">' + (A.ground ? 'Ground only' : 'Ground and air') + '</td></tr>');
+      rows.push('<tr><td>Targets</td><td colspan="2">' + (A.ground ? 'Ground only' : A.air ? 'Air only' : 'Ground and air') + (A.targeting === 'toughest' ? ', toughest first' : '') + '</td></tr>');
     }
     if (b.type === 'lab') rows.push('<tr><td>Research cap</td><td colspan="2">Upgrades up to Lv ' + (lv + 1) + '</td></tr>');
     return '<table class="stats">' + rows.join('') + '</table>';
