@@ -26,9 +26,12 @@
     return ty * S + tx;
   }
 
+  // Runtime-only event log for the renderer; damage numbers get their own share so a long
+  // fight never crowds out deaths and explosions.
   function ev(b, e) {
     const rt = b._rt;
-    if (!rt.silent && rt.events.length < 600) rt.events.push(e);
+    if (rt.silent) return;
+    if (rt.events.length < (e.t === 'dmg' ? 400 : 800)) rt.events.push(e);
   }
 
   // ---------------------------------------------------------------- creation
@@ -291,6 +294,7 @@
     const before = c.hp;
     c.hp -= dmg;
     c.hitT = b.tick;
+    const got = { credits: 0, energy: 0 };
     if (c.loot) {
       const frac = Math.min(before, dmg) / c.maxHp;
       ['credits', 'energy'].forEach(function (r) {
@@ -298,18 +302,22 @@
           const take = Math.min(c.lootLeft[r], c.loot[r] * frac);
           c.lootLeft[r] -= take;
           b.loot[r] += take;
+          got[r] = take;
         }
       });
     }
+    ev(b, { t: 'dmg', id: c.id, b: 1, k: c.type, x: c.x + c.w / 2, y: c.y + c.h / 2, n: Math.min(before, dmg), lc: got.credits, le: got.energy });
     if (c.hp <= 0) destroyBuilding(b, c);
   }
 
   function destroyBuilding(b, c) {
     c.hp = 0;
     c.dead = true;
+    let lc = 0, le = 0;
     if (c.loot) {
-      b.loot.credits += c.lootLeft.credits;
-      b.loot.energy += c.lootLeft.energy;
+      lc = c.lootLeft.credits; le = c.lootLeft.energy;
+      b.loot.credits += lc;
+      b.loot.energy += le;
       c.lootLeft.credits = 0;
       c.lootLeft.energy = 0;
     }
@@ -318,7 +326,7 @@
     rebuildOcc(b);
     rebuildDeploy(b);
     b._rt.pathCache.clear();
-    ev(b, { t: 'destroyed', id: c.id, x: c.x + c.w / 2, y: c.y + c.h / 2, w: c.w, k: c.type });
+    ev(b, { t: 'destroyed', id: c.id, x: c.x + c.w / 2, y: c.y + c.h / 2, w: c.w, k: c.type, lc: lc, le: le });
   }
 
   function hurtUnit(b, u, dmg, src) {
@@ -327,6 +335,7 @@
     u.hp -= dmg;
     u.hitT = b.tick;
     if (src) b.stats.dmg[src.type] = (b.stats.dmg[src.type] || 0) + dealt;
+    ev(b, { t: 'dmg', id: u.id, b: 0, k: u.type, x: u.x, y: u.y, n: dealt });
     if (u.hp <= 0) killUnit(b, u);
   }
 

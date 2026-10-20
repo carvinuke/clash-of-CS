@@ -80,6 +80,12 @@
     return total;
   };
 
+  // True when a generator holds enough to be worth collecting (the bubble over it, the Collect badge).
+  Eco.ready = function (b) {
+    const def = C.buildings[b.type];
+    return !!def.produces && Base.isFunctional(b) && b.stored >= Math.max(5, Base.levelDef(b.type, b.level).buffer * 0.02);
+  };
+
   Eco.engineers = function (state) {
     let total = 0, busy = 0;
     state.base.buildings.forEach(function (b) {

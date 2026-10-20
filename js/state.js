@@ -32,7 +32,7 @@
       stats: { raidsWon: 0, raidsLost: 0, defended: 0, raided: 0, lootCredits: 0, lootEnergy: 0, stolen: 0 },
       log: [],
       tutorial: { step: 0, done: false },
-      settings: { sfx: true, music: true, volume: 0.7, raidMode: 'normal', showGrid: true },
+      settings: { sfx: true, music: true, volume: 0.7, raidMode: 'normal', showGrid: false },
       battle: null
     };
   }
@@ -51,7 +51,8 @@
 
   // ---------------------------------------------------------------- validation & recovery
   const MIGRATIONS = {
-    // 0: function (s) { ...; s.version = 1; return s; }
+    // v2 hides the build grid outside placement and edit mode; it was on by default before.
+    1: function (s) { if (s.settings) s.settings.showGrid = false; s.version = 2; return s; }
   };
 
   function num(v, def, min, max) {

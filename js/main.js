@@ -8,8 +8,8 @@
   const C = CS.CONFIG, U = CS.U, Base = CS.Base, Eco = CS.Eco, Army = CS.Army, Bt = CS.Battle;
   const NPC = CS.NPC, Threat = CS.Threat, Time = CS.Time, R = CS.Render;
   const S = C.grid.size, TEAM = '#3f86e8';
-  // Approximate sprite heights (px) used for click picking and for placing bars above buildings.
-  const ZTOP = { core: 92, spire: 92, lance: 64, well: 58, tank: 58, lab: 62, mint: 56, barracks: 54, garrison: 48, station: 46, blaster: 40, mortar: 34, frost: 52, vault: 40, mine: 10, wall: 30 };
+  // Sprite heights (px) used for click picking and for placing bars above buildings.
+  const TOP = CS.Sprites.TOP;
 
   const G = {
     mode: 'village',        // 'village' | 'defense' (NPC raid on the home base) | 'raid' (player attack)
@@ -17,12 +17,12 @@
     state: null, battle: null, lastBattle: null, result: null,
     speed: 1, acc: 0, ending: 0, battleWall: 0,
     sel: null, place: null, edit: false, troopSel: null,
-    hover: null, zoneFlash: -9, time: 0, pending: []
+    hover: null, pointer: null, zoneFlash: -9, time: 0, pending: []
   };
 
   function now() { return CS.Clock.now(); }
   function sfx(name, o) { CS.Audio.play(name, o); }
-  function toast(text, kind) { CS.UI.toast(text, kind); }
+  function toast(text, kind, icon) { CS.UI.toast(text, kind, icon); }
   function fail(reason) { toast(reason, 'bad'); sfx('error'); return false; }
   function refresh() { CS.UI.refresh(true); }
 
@@ -65,6 +65,13 @@
     R.fitArea(Math.max(14, x1 - x0, y1 - y0) + 3, (x0 + x1) / 2, (y0 + y1) / 2);
   };
 
+  // Frames whatever the current mode is about; call after the HUD for that mode is shown.
+  G.fit = function () {
+    const b = G.battle || G.lastBattle;
+    if (G.mode === 'raid' && b) { G.refreshGround(); R.fitArea(C.tiers[NPC.def(b.targetId).tier].area + 6); }
+    else G.home();
+  };
+
   // ---------------------------------------------------------------- selection & picking
   function rectsHome() {
     return G.state.base.buildings.map(function (b) {
@@ -77,7 +84,7 @@
   function pick(sx, sy, list) {
     let best = null, bestD = -Infinity;
     list.forEach(function (b) {
-      const top = (ZTOP[b.type] || 40) * 0.8;
+      const top = (TOP[b.type] || 40) * 0.85;
       for (let z = 0; z <= top; z += 6) {
         const t = R.toTile(sx, sy + z * R.cam.zoom);
         if (t[0] >= b.x && t[0] < b.x + b.w && t[1] >= b.y && t[1] < b.y + b.h) {
@@ -206,6 +213,7 @@
       if (!r.ok) return fail(r.reason);
       sfx('place');
       R.emit('dust', p.x + p.w / 2, p.y + p.h / 2);
+      R.pop(b.id);
       G.place = null;
       G.sel = G.edit ? null : b.id;
     } else {
@@ -214,6 +222,7 @@
       const instant = Eco.isInstant(p.type, 1);
       sfx(instant ? 'place' : 'build');
       R.emit('dust', p.x + p.w / 2, p.y + p.h / 2);
+      R.pop(r.b.id);
       if (p.type === 'wall' || p.type === 'mine') {
         const n = nextSpot(p);
         p.x = n.x; p.y = n.y;
@@ -222,7 +231,7 @@
       } else {
         G.place = null;
         G.sel = r.b.id;
-        if (!instant) toast(C.buildings[p.type].name + ' construction started', 'good');
+        if (!instant) toast(C.buildings[p.type].name + ' construction started', 'good', 'hammer');
       }
     }
     G.save();
@@ -261,7 +270,7 @@
       sfx('place');
       const last = line[line.length - 1];
       R.emit('dust', last.x + 0.5, last.y + 0.5);
-      toast(n + (n === 1 ? ' wall' : ' walls') + ' placed', 'good');
+      toast(n + (n === 1 ? ' wall' : ' walls') + ' placed', 'good', 'hammer');
       G.save();
     } else if (reason) fail(reason);
     if (G.place) {
@@ -292,7 +301,8 @@
     const r = Eco.startUpgrade(G.state, b, now());
     if (!r.ok) return fail(r.reason);
     sfx(b.status === 'upgrading' ? 'build' : 'complete');
-    toast(b.status === 'upgrading' ? 'Upgrading ' + Base.name(b.type) + ' to Lv ' + (b.level + 1) : Base.name(b.type) + ' upgraded to Lv ' + b.level, 'good');
+    if (b.status !== 'upgrading') R.pop(b.id);
+    toast(b.status === 'upgrading' ? 'Upgrading ' + Base.name(b.type) + ' to Lv ' + (b.level + 1) : Base.name(b.type) + ' upgraded to Lv ' + b.level, 'good', 'up');
     if (b.type === 'core' && b.status === 'active') G.refreshGround();
     G.save();
     refresh();
@@ -304,7 +314,7 @@
     const n = Eco.upgradeWalls(G.state, level);
     if (!n) { fail(Eco.wallBatch(G.state, level).reason || 'Nothing to upgrade'); return 0; }
     sfx('complete');
-    toast(n + (n === 1 ? ' wall' : ' walls') + ' upgraded to Lv ' + (level + 1), 'good');
+    toast(n + (n === 1 ? ' wall' : ' walls') + ' upgraded to Lv ' + (level + 1), 'good', 'up');
     G.save();
     refresh();
     return n;
@@ -316,7 +326,7 @@
     if (!b || !b.timer) return;
     const wasNew = b.status === 'building';
     Eco.cancel(G.state, b);
-    toast((wasNew ? 'Construction' : 'Upgrade') + ' cancelled. Half of the cost was refunded.', 'info');
+    toast((wasNew ? 'Construction' : 'Upgrade') + ' cancelled. Half of the cost was refunded.', 'info', 'hammer');
     if (wasNew) G.sel = null;
     G.save();
     refresh();
@@ -329,6 +339,7 @@
     const r = Eco.repairNow(G.state, b);
     if (!r.ok) return fail(r.reason);
     sfx('build');
+    R.pop(b.id);
     G.save();
     refresh();
     return true;
@@ -343,9 +354,9 @@
     let n = 0, short = null;
     list.forEach(function (b) {
       const r = Eco.repairNow(st, b);
-      if (r.ok) n++; else short = r.reason;
+      if (r.ok) { n++; R.pop(b.id); } else short = r.reason;
     });
-    if (n) { sfx('build'); toast(n + ' building' + (n === 1 ? '' : 's') + ' repaired' + (short ? '. ' + short + ' for the rest' : ''), 'good'); }
+    if (n) { sfx('build'); toast(n + ' building' + (n === 1 ? '' : 's') + ' repaired' + (short ? '. ' + short + ' for the rest' : ''), 'good', 'wrench'); }
     else fail(short);
     G.save();
     refresh();
@@ -354,10 +365,10 @@
 
   G.collectAll = function () {
     const got = Eco.collectAll(G.state);
-    if (got.credits + got.energy <= 0) { toast('Nothing to collect yet', 'info'); return got; }
+    if (got.credits + got.energy <= 0) { toast('Nothing to collect yet', 'info', 'sack'); return got; }
     const cap = Eco.capacity(G.state);
     const full = (got.credits === 0 && G.state.res.credits >= cap.credits) || (got.energy === 0 && G.state.res.energy >= cap.energy);
-    if (full) toast('Some storage is full. Build or upgrade storages to hold more.', 'info');
+    if (full) toast('Some storage is full. Build or upgrade storages to hold more.', 'info', 'warn');
     G.save();
     refresh();
     return got;
@@ -383,7 +394,7 @@
     if (!r.ok) return fail(r.reason);
     sfx('build');
     const d = CS.Research.describe(G.state, key);
-    toast('Researching ' + d.name + ' Lv ' + (d.level + 1), 'good');
+    toast('Researching ' + d.name + ' Lv ' + (d.level + 1), 'good', 'flask');
     G.save();
     refresh();
     return true;
@@ -391,7 +402,7 @@
 
   G.cancelResearch = function () {
     CS.Research.cancel(G.state);
-    toast('Research cancelled. Half of the cost was refunded.', 'info');
+    toast('Research cancelled. Half of the cost was refunded.', 'info', 'flask');
     G.save();
     refresh();
   };
@@ -416,11 +427,12 @@
     G.mode = 'village'; G.sel = null; G.place = null; G.edit = false; G.speed = 1;
     G.state = CS.State.newGame(now());
     CS.Audio.applySettings(G.state.settings);
-    R.fx.length = 0;
-    G.home();
-    G.save();
+    R.clearFx();
+    G.hover = null;
     CS.UI.closeAll();
     CS.UI.enterVillage();
+    G.home();
+    G.save();
     CS.Tutorial.restart();
     CS.Audio.music('village');
     refresh();
@@ -465,11 +477,11 @@
     G.mode = 'raid'; G.acc = 0; G.speed = 1; G.ending = 0; G.battleWall = t;
     G.sel = null; G.place = null; G.edit = false;
     G.troopSel = G.firstTroop();
-    R.fx.length = 0;
-    G.refreshGround();
-    R.fitArea(C.tiers[s.tier].area + 6);
+    G.hover = null;
+    R.clearFx();
     CS.UI.closeAll();
     CS.UI.enterRaid();
+    G.fit();
     CS.Audio.music('battle');
     sfx('horn');
     CS.Bus.emit('raid:start', { id: id });
@@ -521,7 +533,8 @@
   G.goHome = function () {
     G.battle = null; G.lastBattle = null; G.result = null;
     G.mode = 'village'; G.ending = 0; G.speed = 1;
-    R.fx.length = 0;
+    G.hover = null;
+    R.clearFx();
     CS.UI.closeAll();
     CS.UI.enterVillage();
     CS.Audio.music('village');
@@ -598,7 +611,7 @@
     G.edit = false;
     G.battle = Threat.buildDefense(st, plan, now());
     G.mode = 'defense'; G.acc = 0; G.speed = 1; G.ending = 0; G.battleWall = now();
-    R.fx.length = 0;
+    R.clearFx();
     G.refreshGround();
     CS.UI.closeAll();
     CS.UI.enterDefense();
@@ -641,8 +654,8 @@
     onWarning: function (plan) {
       const s = NPC.def(plan.attackerId);
       sfx('warning');
-      if (G.mode === 'raid') toast('Scouts report raiders from ' + s.name + ' near your base. They will strike once you return.', 'bad');
-      else if (plan.kind === 'retaliation') toast(s.leader + ' of ' + s.name + ' seeks revenge!', 'bad');
+      if (G.mode === 'raid') toast('Scouts report raiders from ' + s.name + ' near your base. They will strike once you return.', 'bad', 'warn');
+      else if (plan.kind === 'retaliation') toast(s.leader + ' of ' + s.name + ' seeks revenge!', 'bad', 'sword');
       refresh();
     },
     onLaunch: function (plan) { G.startDefense(plan); }
@@ -657,25 +670,26 @@
         if (e.btype === 'core') coreChanged = true;
         if (!quiet) {
           const b = Base.find(G.state, e.id);
-          toast(Base.name(e.btype) + (e.type === 'built' ? ' is ready' : ' reached Lv ' + e.level), 'good');
+          toast(Base.name(e.btype) + (e.type === 'built' ? ' is ready' : ' reached Lv ' + e.level), 'good', e.type === 'built' ? 'hammer' : 'up');
           if (b) {
             const r = Base.rect(b);
-            R.emit('text', r.x + r.w / 2, r.y + r.h / 2, 60, { text: e.type === 'built' ? 'Built!' : 'Lv ' + e.level, col: '#ffe066' });
+            R.pop(b.id);
+            R.emit('text', r.x + r.w / 2, r.y + r.h / 2, (TOP[b.type] || 40) + 18, { text: e.type === 'built' ? 'Ready' : 'Lv ' + e.level, col: '#ffe9a6', size: 14 });
           }
         }
       } else if (e.type === 'trained') trained++;
       else if (e.type === 'research' && !quiet) {
         const d = CS.Research.describe(G.state, e.key);
-        toast(d.name + ' research complete (Lv ' + e.level + ')', 'good');
-      } else if (e.type === 'repaired' && !quiet) toast(Base.name(e.btype) + ' has been rebuilt', 'info');
+        toast(d.name + ' research complete (Lv ' + e.level + ')', 'good', 'flask');
+      } else if (e.type === 'repaired' && !quiet) toast(Base.name(e.btype) + ' has been rebuilt', 'info', 'wrench');
     });
     if (!quiet) {
       if (events.some(function (e) { return e.type !== 'trained'; })) sfx('complete');
       else if (trained) sfx('trainDone', { quiet: true });
-      if (trained && !G.state.army.queue.length) toast('Training complete. Your army is ready.', 'good');
+      if (trained && !G.state.army.queue.length) toast('Training complete. Your army is ready.', 'good', 'army');
     }
     events.forEach(function (e) { CS.Bus.emit('time:' + e.type, e); });
-    if (coreChanged) { G.refreshGround(); if (!quiet) toast('Your Command Core grew. More buildings and land are available!', 'good'); }
+    if (coreChanged) { G.refreshGround(); if (!quiet) toast('Your Command Core grew. More buildings and land are available!', 'good', 'core'); }
     refresh();
   }
 
@@ -729,7 +743,7 @@
       info.recoil = R.recoilAmount(c.id);
     } else if (A.kind === 'lance') {
       info.firing = !!tgt && c.func;
-      if (info.firing) beams.push({ x0: cx, y0: cy, z0: 60, x1: tgt.x, y1: tgt.y, z1: 12 });
+      if (info.firing) beams.push({ x0: cx, y0: cy, z0: 64, x1: tgt.x, y1: tgt.y, z1: 12 });
     } else if (A.kind === 'frost') info.pulse = R.pulseAmount(c.id);
     else if (A.kind === 'mine') { info.hidden = false; info.triggered = !c.armed; }
   }
@@ -746,13 +760,16 @@
     const types = C.troopOrder.filter(function (k) { return st.army.units[k] > 0; });
     const units = Army.totalUnits(st);
     const ra = st.research.active;
+    const hoverId = G.hover && !G.place ? G.hover.id : 0;
     let trainShown = false;
     st.base.buildings.forEach(function (b) {
       const r = Base.rect(b);
       const def = C.buildings[b.type];
-      const o = { id: b.id, type: b.type, level: b.status === 'building' ? 0 : b.level, rot: b.rot, x: r.x, y: r.y, w: r.w, h: r.h, team: TEAM, ruin: b.ruined, barZ: ZTOP[b.type] };
+      const o = { id: b.id, type: b.type, level: b.status === 'building' ? 0 : b.level, rot: b.rot, x: r.x, y: r.y, w: r.w, h: r.h, team: TEAM, ruin: b.ruined, barZ: TOP[b.type] };
       const info = { team: TEAM, active: Base.isFunctional(b), upgrading: b.status === 'upgrading' };
       o.info = info;
+      o.sel = G.sel === b.id;
+      o.hover = hoverId === b.id;
       if (b.type === 'wall') o.mask = wallMask(walls, b.x, b.y);
       const bb = bat ? Bt.building(bat, b.id) : null;
       if (bb) {
@@ -769,7 +786,7 @@
       if (def.produces) {
         const L = Base.levelDef(b.type, b.level);
         info.fill = b.stored / L.buffer;
-        if (!bat && Base.isFunctional(b) && b.stored >= Math.max(5, L.buffer * 0.02)) o.bubble = def.produces;
+        if (!bat && Eco.ready(b)) o.bubble = def.produces;
       } else if (def.stores) info.fill = cap[def.stores] ? st.res[def.stores] / cap[def.stores] : 0;
       else if (b.type === 'garrison') { info.troops = units; info.troopTypes = types; }
       else if (b.type === 'lab') info.busy = !!ra;
@@ -778,29 +795,32 @@
       if (b.ruined && !bat) o.bubble = 'repair';
       if (b.timer) {
         const total = b.timer.end - b.timer.start;
-        o.timer = { frac: total > 0 ? U.clamp((t - b.timer.start) / total, 0, 1) : 1, text: U.fmtTime((b.timer.end - t) / 1000) };
+        o.timer = { frac: total > 0 ? U.clamp((t - b.timer.start) / total, 0, 1) : 1, text: U.fmtTime((b.timer.end - t) / 1000), icon: 'hammer' };
       } else if (b.type === 'lab' && ra) {
-        o.timer = { frac: U.clamp((t - ra.start) / (ra.end - ra.start), 0, 1), text: U.fmtTime((ra.end - t) / 1000) };
+        o.timer = { frac: U.clamp((t - ra.start) / (ra.end - ra.start), 0, 1), text: U.fmtTime((ra.end - t) / 1000), icon: 'flask' };
       } else if (b.type === 'barracks' && st.army.queue.length && !trainShown && Base.isFunctional(b)) {
         trainShown = true;
         const head = st.army.queue[0];
-        o.timer = { frac: U.clamp(st.army.progress / Army.trainSeconds(st, head.type), 0, 1), text: U.fmtTime(Army.queueRemaining(st)) };
+        o.timer = { frac: U.clamp(st.army.progress / Army.trainSeconds(st, head.type), 0, 1), text: U.fmtTime(Army.queueRemaining(st)), icon: 'army' };
       }
       scene.buildings.push(o);
     });
-    if (bat) battleUnits(bat, scene, NPC.faction(NPC.def(bat.attackerId)).color);
+    if (bat) battleUnits(bat, scene, NPC.faction(NPC.def(bat.attackerId)).color, null);
     // placement ghost and highlights
     const p = G.place;
+    const OK = { fill: 'rgba(132,226,110,0.3)', stroke: 'rgba(196,255,170,0.95)' }, BAD = { fill: 'rgba(232,82,58,0.32)', stroke: 'rgba(255,140,120,0.95)' };
     if (p) {
       scene.grid = true;
       if (p.line) {
         p.line.forEach(function (tl) {
           scene.buildings.push({ id: -1, type: 'wall', level: 1, rot: 0, x: tl.x, y: tl.y, w: 1, h: 1, team: TEAM, alpha: 0.75, mask: 0, info: { team: TEAM } });
-          scene.highlights.push({ x: tl.x, y: tl.y, w: 1, h: 1, fill: tl.ok ? 'rgba(80,255,120,0.3)' : 'rgba(255,60,60,0.35)', stroke: tl.ok ? 'rgba(120,255,150,0.9)' : 'rgba(255,90,90,0.9)' });
+          const c = tl.ok ? OK : BAD;
+          scene.highlights.push({ x: tl.x, y: tl.y, w: 1, h: 1, fill: c.fill, stroke: c.stroke });
         });
       } else {
-        scene.ghost = { id: -1, type: p.type, level: p.level || 1, rot: p.rot, x: p.x, y: p.y, w: p.w, h: p.h, team: TEAM, alpha: 0.78, mask: p.type === 'wall' ? wallMask(walls, p.x, p.y) : 0, info: { team: TEAM, angle: 0.8, active: true, fill: 0.5 }, barZ: ZTOP[p.type] };
-        scene.highlights.push({ x: p.x, y: p.y, w: p.w, h: p.h, fill: p.ok ? 'rgba(80,255,120,0.28)' : 'rgba(255,60,60,0.32)', stroke: p.ok ? 'rgba(120,255,150,0.95)' : 'rgba(255,90,90,0.95)' });
+        scene.ghost = { id: -1, type: p.type, level: p.level || 1, rot: p.rot, x: p.x, y: p.y, w: p.w, h: p.h, team: TEAM, alpha: 0.78, mask: p.type === 'wall' ? wallMask(walls, p.x, p.y) : 0, info: { team: TEAM, angle: 0.8, active: true, fill: 0.5 }, barZ: TOP[p.type] };
+        const c = p.ok ? OK : BAD;
+        scene.highlights.push({ x: p.x, y: p.y, w: p.w, h: p.h, fill: c.fill, stroke: c.stroke });
         const A = C.buildings[p.type].attack;
         if (A && A.range > 1.5) scene.ranges.push({ x: p.x + p.w / 2, y: p.y + p.h / 2, r: A.range, min: A.minRange });
       }
@@ -810,17 +830,24 @@
       const b = Base.find(st, G.sel);
       if (b) {
         const r = Base.rect(b);
-        scene.highlights.push({ x: r.x, y: r.y, w: r.w, h: r.h, fill: 'rgba(255,255,255,0.12)', stroke: 'rgba(255,255,255,0.85)' });
         const A = C.buildings[b.type].attack;
         if (A && A.range > 1.5) scene.ranges.push({ x: r.x + r.w / 2, y: r.y + r.h / 2, r: A.range, min: A.minRange });
       }
     }
-    if (st.settings.showGrid && !bat) scene.grid = true;
-    scene.gridAlpha = p || G.edit ? 0.22 : 0.09;
+    const always = st.settings.showGrid && !bat;
+    if (always) scene.grid = true;
+    scene.gridAlpha = p || G.edit ? 0.17 : 0.08;
     scene.area = Base.buildArea(Base.coreLevel(st));
+    if (scene.grid) {
+      scene.occupied = st.base.buildings.filter(function (b) { return !p || b.id !== p.moveId; }).map(Base.rect);
+    }
   }
 
-  function battleUnits(b, scene, team) {
+  // Projectile heights in px: where each shot leaves its weapon (the blaster muzzle, the spire's
+  // ballista, a troop's hands) and how high on the target it lands.
+  const SHOT = { ball: { z: 29, hide: 1.15 }, bolt: { z: 82, hide: 0.95 }, arrow: { z: 13, hide: 0 }, orb: { z: 16, hide: 0 } };
+
+  function battleUnits(b, scene, team, threatened) {
     const a = U.clamp(G.acc / Bt.TICK, 0, 1);
     b.units.forEach(function (u) {
       const moving = Math.abs(u.x - u.px) + Math.abs(u.y - u.py) > 1e-4;
@@ -828,7 +855,8 @@
       scene.units.push({
         id: u.id, type: u.type, team: team, x: u.px + (u.x - u.px) * a, y: u.py + (u.y - u.py) * a,
         face: u.face, idle: !moving, atk: since < 9 ? since / 9 : null, hit: b.tick - u.hitT < 3,
-        lv: u.lv, skin: u.id % 4, hp: u.hp, maxHp: u.maxHp
+        lv: u.lv, skin: u.id % 4, hp: u.hp, maxHp: u.maxHp, enemy: b.kind === 'defense',
+        targeted: !!threatened && threatened.has(u.id)
       });
     });
     b.proj.forEach(function (p) {
@@ -837,10 +865,13 @@
       if (!tgt) return;
       const tx = p.tb ? tgt.x + tgt.w / 2 : tgt.x, ty = p.tb ? tgt.y + tgt.h / 2 : tgt.y;
       const done = U.dist(p.sx, p.sy, p.x, p.y), left = U.dist(p.x, p.y, tx, ty);
-      const f = done + left > 0 ? done / (done + left) : 1;
-      const z0 = p.k === 'bolt' ? 62 : p.k === 'ball' ? 26 : 13, z1 = p.tb ? 22 : 10;
+      const shot = SHOT[p.k] || SHOT.arrow;
+      if (done < shot.hide) return;          // still inside the weapon that fired it
+      const total = done + left;
+      const f = total > 0 ? done / total : 1;
+      const z0 = shot.z, z1 = p.tb ? (TOP[tgt.type] || 30) * 0.45 : 10;
       const d = left || 1;
-      scene.projectiles.push({ k: p.k, x: p.x, y: p.y, z: z0 + (z1 - z0) * f, dx: (tx - p.x) / d * 0.5, dy: (ty - p.y) / d * 0.5, dz: (z0 - z1) * 0.04 });
+      scene.projectiles.push({ k: p.k, x: p.x, y: p.y, z: z0 + (z1 - z0) * f, dx: (tx - p.x) / d * 0.5, dy: (ty - p.y) / d * 0.5, dz: total > 0 ? (z0 - z1) / total * 0.5 : 0 });
     });
     scene.unitBars = true;
   }
@@ -850,13 +881,29 @@
     const s = NPC.def(b.targetId);
     const team = NPC.faction(s).color;
     const walls = tilesOf(b.buildings);
+    const live = G.battle && !G.battle.ended;
+    // What the player needs to read at a glance: the buildings their troops are hitting, and the
+    // defenses currently shooting at them (and at whom).
+    const targeted = new Set(), threatened = new Set();
+    if (live) {
+      b.units.forEach(function (u) { if (!u.dead && u.tgt) targeted.add(u.obs || u.tgt); });
+    }
+    const hoverId = G.hover ? G.hover.id : 0;
     b.buildings.forEach(function (c) {
       if (c.trap && (c.hidden || c.spent)) return;
       const info = { team: team, active: c.func };
-      const o = { id: c.id, type: c.type, level: c.level, rot: c.rot, x: c.x, y: c.y, w: c.w, h: c.h, team: team, ruin: c.dead, info: info, barZ: ZTOP[c.type] };
+      const o = { id: c.id, type: c.type, level: c.level, rot: c.rot, x: c.x, y: c.y, w: c.w, h: c.h, team: team, ruin: c.dead, info: info, barZ: TOP[c.type] };
       if (c.wall) o.mask = wallMask(walls, c.x, c.y);
       o.hpFrac = c.hp / c.maxHp;
       o.hitFlash = b.tick - c.hitT < 3;
+      o.hover = hoverId === c.id && !c.dead;
+      if (live && !c.dead) {
+        o.targeted = targeted.has(c.id);
+        if (c.atk && c.func && c.tgt) {
+          if (c.atk.kind === 'frost') o.engaged = true;
+          else if (Bt.unit(b, c.tgt)) { o.engaged = true; threatened.add(c.tgt); }
+        }
+      }
       const def = C.buildings[c.type];
       if (def.produces || def.stores) info.fill = c.lootLeft ? Math.min(1, (c.lootLeft.credits + c.lootLeft.energy) / 2500) : 0.3;
       else if (c.type === 'garrison') { info.troops = 3; info.troopTypes = NPC.faction(s).troops; }
@@ -865,15 +912,20 @@
       if (c.atk && (c.atk.kind === 'blaster' || c.atk.kind === 'spire' || c.atk.kind === 'mortar') && !c.tgt && b.phase === 'scout') info.angle = idleAngle(c.id);
       scene.buildings.push(o);
     });
-    battleUnits(b, scene, TEAM);
-    if (G.battle && !G.battle.ended) {
+    battleUnits(b, scene, TEAM, live ? threatened : null);
+    if (live && Bt.poolTotal(G.battle) > 0) {
+      // the no-deploy tint is strongest while scouting and after a refused drop; mid-fight only its edge stays
       const flash = Math.max(0, 1 - (G.time - G.zoneFlash) / 0.9);
-      scene.deployMask = Bt.deployMask(b);
-      scene.deployAlpha = 0.13 + 0.3 * flash;
+      const scouting = G.battle.phase === 'scout';
+      scene.deploy = { mask: Bt.deployMask(b), alpha: (scouting ? 0.11 : 0.04) + 0.2 * flash, edge: (scouting ? 0.8 : 0.45) + 0.5 * flash };
+      if (G.pointer) {
+        const t = R.toTile(G.pointer.x, G.pointer.y);
+        if (t[0] > -2 && t[1] > -2 && t[0] < S + 2 && t[1] < S + 2) scene.cursor = { x: t[0], y: t[1], ok: Bt.canDeploy(G.battle, t[0], t[1]) };
+      }
     }
-    if (G.hover && G.hover.id) {
-      const c = Bt.building(b, G.hover.id);
-      if (c && c.atk && !c.dead && c.atk.range > 1.5) scene.ranges.push({ x: c.x + c.w / 2, y: c.y + c.h / 2, r: c.atk.range, min: c.atk.minRange, col: 'rgba(255,120,90,0.7)', fill: 'rgba(255,80,60,0.06)' });
+    if (hoverId) {
+      const c = Bt.building(b, hoverId);
+      if (c && c.atk && !c.dead && c.atk.range > 1.5) scene.ranges.push({ x: c.x + c.w / 2, y: c.y + c.h / 2, r: c.atk.range, min: c.atk.minRange, col: 'rgba(255,128,100,0.75)', fill: 'rgba(255,80,60,0.06)' });
     }
   }
 
@@ -885,33 +937,61 @@
   }
 
   // ---------------------------------------------------------------- battle events -> effects and sound
+  // Every effect here answers a real event from the battle simulation; nothing is staged.
+  const GOLD = '#ffd45a', VIOLET = '#d6a8ff', HURT = '#ff9a85', HIT = '#fff1d0';
   function battleEvents(b, events) {
     const home = b.kind === 'defense';
     events.forEach(function (e) {
       switch (e.t) {
-        case 'deploy': R.emit('poof', e.x, e.y); sfx('deploy'); break;
+        case 'deploy': R.emit('deploy', e.x, e.y); sfx('deploy'); break;
+        case 'dmg': {
+          // damage to the player's side reads red; damage the player deals reads cream
+          // numbers sit beside the target, not over its health bar: damage to the right, loot to the left
+          const mine = home ? e.b : !e.b;
+          const z = e.b ? (TOP[e.k] || 30) * 0.45 + 6 : 30;
+          if (e.b) R.damage('b' + e.id, e.x + 0.45, e.y - 0.15, z, e.n, mine ? HURT : HIT, '');
+          else R.damage('u' + e.id, e.x + 0.2, e.y - 0.2, z, e.n, mine ? HURT : HIT, '');
+          if (e.lc > 0) R.damage('lc' + e.id, e.x - 0.15, e.y + 0.45, z + 10, e.lc, home ? HURT : GOLD, home ? '−' : '+');
+          if (e.le > 0) R.damage('le' + e.id, e.x - 0.45, e.y + 0.15, z + 22, e.le, home ? HURT : VIOLET, home ? '−' : '+');
+          break;
+        }
         case 'destroyed': {
-          R.emit('debris', e.x, e.y, 0, { w: e.w, n: e.k === 'wall' ? 6 : 16 });
-          if (e.k !== 'wall') R.emit('boom', e.x, e.y, 10, { r: Math.min(2, e.w / 2) });
           const def = C.buildings[e.k];
-          if (!home && (def.produces || def.stores || e.k === 'core')) R.emit('coins', e.x, e.y, 30, { col: def.produces === 'energy' || def.stores === 'energy' ? '#c48bff' : '#f2c23a' });
-          sfx(e.k === 'wall' ? 'wallBreak' : 'destroy');
-          if (e.k === 'core') R.emit('text', e.x, e.y, 90, { text: home ? 'Core destroyed!' : 'Core down!', col: '#ffd34d', size: 20 });
+          const wall = e.k === 'wall';
+          R.emit('debris', e.x, e.y, 0, { w: e.w, n: wall ? 6 : 12, cols: wall ? ['#9d958a', '#7b746b'] : ['#8a7e70', '#6b5f52', '#a77b4f'] });
+          if (!wall) { R.emit('boom', e.x, e.y, 10, { r: Math.min(2, e.w / 2) }); R.smolder(e.x, e.y, e.w); }
+          if (e.lc > 0) R.damage('lc' + e.id, e.x - 0.15, e.y + 0.45, (TOP[e.k] || 30) * 0.45 + 16, e.lc, home ? HURT : GOLD, home ? '−' : '+');
+          if (e.le > 0) R.damage('le' + e.id, e.x - 0.45, e.y + 0.15, (TOP[e.k] || 30) * 0.45 + 28, e.le, home ? HURT : VIOLET, home ? '−' : '+');
+          if (!home && (def.produces || def.stores || e.k === 'core')) R.emit('coins', e.x, e.y, 30, { col: def.produces === 'energy' || def.stores === 'energy' ? '#b07cff' : '#f2c23a' });
+          sfx(wall ? 'wallBreak' : 'destroy');
+          if (e.k === 'core') {
+            R.emit('shock', e.x, e.y, 0, { r: e.w / 2, shake: 4 });
+            R.emit('text', e.x, e.y, 110, { text: home ? 'Core destroyed' : 'Core down', col: '#ffe08a', size: 17, life: 1.8 });
+          } else if (e.w >= 4) R.emit('shock', e.x, e.y, 0, { r: e.w / 2, shake: 2 });
           break;
         }
         case 'death': R.emit('poof', e.x, e.y); sfx('death'); break;
         case 'hit': R.emit('spark', e.x, e.y, 12); sfx('hit'); break;
         case 'shoot': sfx(e.k === 'orb' ? 'orb' : 'bow'); break;
-        case 'fire':
+        case 'fire': {
           R.recoil(e.id);
-          if (e.k === 'blaster') R.emit('muzzle', e.x, e.y, 30);
+          const a = R.aimOf(e.id);
+          if (a != null && (e.k === 'blaster' || e.k === 'mortar')) {
+            const L = e.k === 'blaster' ? 1.25 : 0.45, dx = Math.cos(a), dy = Math.sin(a);
+            R.emit('muzzle', e.x + dx * L, e.y + dy * L, e.k === 'blaster' ? 29 : 38, { dx: dx, dy: dy });
+          }
           sfx(e.k);
           break;
+        }
         case 'boom': R.emit('boom', e.x, e.y, 4, { r: e.r, col: e.k === 'mine' ? '#ffe36e' : undefined }); sfx(e.k === 'shell' ? 'mortarHit' : 'boom'); break;
-        case 'impact': if (e.k === 'orb') R.emit('spark', e.x, e.y, 14, { col: '#d79bff' }); else if (e.k === 'ball') R.emit('spark', e.x, e.y, 12, { col: '#ffcf70' }); break;
+        case 'impact':
+          if (e.k === 'orb') R.emit('spark', e.x, e.y, 14, { col: '#d79bff' });
+          else if (e.k === 'ball') R.emit('spark', e.x, e.y, 12, { col: '#ffcf70' });
+          else R.emit('spark', e.x, e.y, 10, { col: '#f3ecdc' });
+          break;
         case 'mineArm': R.emit('text', e.x, e.y, 20, { text: '!', col: '#ff5a4a', size: 18 }); sfx('mine'); break;
         case 'frost': R.pulse(e.id); sfx('frost'); break;
-        case 'heal': R.emit('heal', e.x, e.y); sfx('heal'); break;
+        case 'heal': R.emit('heal', e.x, e.y, 0, { r: e.r }); sfx('heal'); break;
         case 'end': break;
       }
     });
@@ -927,8 +1007,10 @@
     }
     battleEvents(b, Bt.takeEvents(b));
     if (b.ended) {
-      if (!G.ending) G.ending = performance.now() + 1500;
-      else if (performance.now() >= G.ending) finishBattle();
+      if (!G.ending) {
+        G.ending = performance.now() + 1500;
+        if (CS.UI.battleOver) CS.UI.battleOver(b);
+      } else if (performance.now() >= G.ending) finishBattle();
     }
   }
 
@@ -1007,6 +1089,7 @@
     if (G.result) CS.UI.raidResults(G.result);
     CS.Tutorial.start();
     refresh();
+    G.fit();
   };
 
   // Restores a battle saved mid-fight, advancing it by the time the game was closed.
@@ -1041,17 +1124,21 @@
     resumeBattle(t);
     G.sync('load');
     G.refreshGround();
-    if (G.mode === 'raid' && (G.battle || G.lastBattle)) R.fitArea(C.tiers[NPC.def((G.battle || G.lastBattle).targetId).tier].area + 6);
-    else G.home();
+    G.fit();
+    // Collected resources fly from the building to their counter in the HUD.
     CS.Bus.on('collected', function (e) {
       const b = Base.find(G.state, e.id);
       if (!b) return;
       const r = Base.rect(b);
-      R.emit('text', r.x + r.w / 2, r.y + r.h / 2, 64, { text: '+' + U.fmt(e.amount), col: e.res === 'credits' ? '#ffd84a' : '#d9a6ff' });
-      R.emit('coins', r.x + r.w / 2, r.y + r.h / 2, 40, { col: e.res === 'credits' ? '#f2c23a' : '#c48bff' });
+      const cx = r.x + r.w / 2, cy = r.y + r.h / 2;
+      R.emit('text', cx, cy, (TOP[b.type] || 40) + 20, { text: '+' + U.fmt(e.amount), col: e.res === 'credits' ? GOLD : VIOLET, size: 15 });
+      const from = R.toScreen(cx, cy, (TOP[b.type] || 40) * 0.6);
+      const to = CS.UI.resourceAnchor ? CS.UI.resourceAnchor(e.res) : null;
+      if (to) R.flyTo(from[0], from[1], to.x, to.y, e.res, Math.min(6, 2 + Math.floor(Math.log10(Math.max(1, e.amount)))), function () { if (CS.UI.bump) CS.UI.bump(e.res); });
+      else R.emit('coins', cx, cy, 40, { col: e.res === 'credits' ? '#f2c23a' : '#b07cff' });
       sfx(e.res === 'credits' ? 'coins' : 'energy');
     });
-    CS.Bus.on('player:level', function (e) { toast('Commander level ' + e.level + '!', 'good'); sfx('levelup'); });
+    CS.Bus.on('player:level', function (e) { toast('Commander level ' + e.level + '!', 'good', 'star'); sfx('levelup'); });
     document.addEventListener('visibilitychange', function () { if (document.hidden) onHidden(); else onVisible(); });
     window.addEventListener('pagehide', onHidden);
     window.addEventListener('pageshow', function (e) { if (e.persisted) onVisible(); });
