@@ -110,8 +110,10 @@
    *  compartments - one wall ring split into four cells by a wall cross
    *  spread - buildings scattered with short walls shielding key defenses
    */
+  // `tier` is a tier number or a tier-shaped spec ({core, area, walls, wallLv, b}), as base presets use.
   NPC.generate = function (tier, fortify, seed, arch) {
-    const T = C.tiers[tier];
+    const T = typeof tier === 'object' ? tier : C.tiers[tier];
+    if (typeof tier === 'object') tier = T.core;
     const rng = new U.Rng(seed);
     const a0 = Math.floor((SZ - T.area) / 2), a1 = a0 + T.area;
     const occ = new Uint8Array(SZ * SZ);       // 0 free, 1 building, 2 wall, 3 trap

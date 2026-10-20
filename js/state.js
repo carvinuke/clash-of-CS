@@ -34,6 +34,7 @@
       tutorial: { step: 0, done: false },
       settings: { sfx: true, music: true, volume: 0.7, raidMode: 'normal', showGrid: false },
       heroes: {},
+      cheats: { rich: false, instant: false, heroes: false },
       battle: null
     };
   }
@@ -161,6 +162,7 @@
     const ra = s.research.active;
     if (ra && (!(C.troops[ra.key] || C.research.techs[ra.key]) || !isFinite(ra.end))) s.research.active = null;
 
+    Object.keys(fresh.cheats).forEach(function (k) { s.cheats[k] = s.cheats[k] === true; });
     if (!C.attacks.modes[s.settings.raidMode]) s.settings.raidMode = 'normal';
     if (!Array.isArray(s.log)) s.log = [];
     if (!Array.isArray(s.threat.retaliations)) s.threat.retaliations = [];
@@ -227,6 +229,31 @@
       }
       return { state: State.newGame(now), status: 'reset', message: 'Your save could not be read, so a new settlement was started. The damaged data was kept aside.' };
     }
+  };
+
+  // Checks a backup file's text and returns the save JSON to restore. Throws with a reason the player can read.
+  State.readBackup = function (text, now) {
+    let w = null;
+    try { w = JSON.parse(text); } catch (e) { w = null; }
+    if (!w || typeof w !== 'object' || !w.state || typeof w.state !== 'object') throw new Error('This file is not a Clash of CS backup.');
+    if (Number(w.v) > C.saveVersion) throw new Error('This backup comes from a newer version of the game.');
+    let s;
+    try { s = State.sanitize(w.state, now); } catch (e) { throw new Error('This backup is damaged and cannot be restored.'); }
+    s.lastTick = now; s.savedAt = now;          // resume exactly where the backup left off
+    return JSON.stringify({ v: C.saveVersion, savedAt: now, state: s });
+  };
+
+  // Makes a checked backup the current save, keeping the replaced save under `.pre-restore`.
+  State.restore = function (json) {
+    const ls = storage();
+    if (!ls) return false;
+    try {
+      const cur = ls.getItem(C.saveKey);
+      if (cur) ls.setItem(C.saveKey + '.pre-restore', cur);
+      ls.setItem(C.saveKey, json);
+      ls.setItem(C.saveKey + '.backup', json);
+      return true;
+    } catch (e) { return false; }
   };
 
   State.clear = function () {

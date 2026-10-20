@@ -215,7 +215,7 @@
     if (k === 'enter' && G.place) { G.confirmPlace(); return; }
     if (k === 'r') { if (G.place) G.rotatePlace(); else CS.UI.open('research'); return; }
     if (k === ' ') { G.home(); return; }
-    const map = { b: 'build', e: 'edit', m: 'world', t: 'army', l: 'log', c: 'collect', h: 'help' };
+    const map = { b: 'build', e: 'edit', m: 'world', t: 'army', l: 'log', c: 'collect', h: 'help', p: 'layouts' };
     if (map[k] && !e.repeat) CS.UI.ACT[map[k]]();
   }
 

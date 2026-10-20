@@ -7,7 +7,7 @@ const ctx = { console: Object.assign({}, console, { warn: function () {} }), Mat
 ctx.window = ctx;
 ctx.localStorage = { getItem: k => store[k] ?? null, setItem: (k, v) => { store[k] = String(v); }, removeItem: k => { delete store[k]; } };
 vm.createContext(ctx);
-const files = ['config','util','base','research','army','economy','state','pathfinding','battle','npc','threat','timesys'];
+const files = ['config','util','base','research','army','economy','admin','state','pathfinding','battle','npc','presets','threat','timesys'];
 for (const f of files) vm.runInContext(fs.readFileSync(path.join(root, 'js', f + '.js'), 'utf8'), ctx, { filename: f + '.js' });
 const CS = ctx.CS;
 let fails = 0;
@@ -271,5 +271,56 @@ store[CS.CONFIG.saveKey] = JSON.stringify({ v: 1, state: { base: { buildings: [{
 delete store[CS.CONFIG.saveKey + '.backup'];
 const rec3 = CS.State.load(Date.now());
 ok(rec3.status === 'loaded' && rec3.state.base.buildings.length === 2, 'garbage save sanitized: ' + rec3.status + ' ' + rec3.state.base.buildings.map(b => b.type + '@' + b.x + ',' + b.y).join(' '));
+// Base presets: three complete, legal layouts per core level
+function stateFrom(core, slots) {
+  const st = CS.State.newGame(Date.now());
+  st.base.buildings = []; st.base.nextId = 1;
+  slots.forEach(p => CS.Base.newBuilding(st, p.type, p.x, p.y, p.rot, p.type === 'core' ? core : 1, 'active'));
+  return st;
+}
+function legal(st) {
+  return st.base.buildings.every(b => CS.Base.canPlaceAt(st, b.type, b.x, b.y, b.rot, b.id).ok);
+}
+let presetsOk = true;
+for (let core = 1; core <= CS.CONFIG.buildings.core.levels.length; core++) {
+  for (let i = 0; i < CS.Presets.STYLES.length; i++) {
+    const L = CS.Presets.layout(core, i);
+    const short = Object.keys(CS.CONFIG.buildings).filter(t => L.filter(p => p.type === t).length !== CS.Base.maxCount(t, core));
+    const st = stateFrom(core, L);
+    if (short.length || !legal(st)) { presetsOk = false; console.log('  preset core', core, 'style', i, 'short:', short.join(',')); }
+  }
+}
+ok(presetsOk, 'every core level has 3 presets holding its full building allowance, all legal');
+s = stateFrom(9, CS.Presets.layout(9, 0));
+const n9 = s.base.buildings.length;
+r = CS.Presets.apply(s, 2);
+const slots2 = new Set(CS.Presets.layout(9, 2).map(p => p.type + p.x + ',' + p.y));
+ok(r.ok && s.base.buildings.length === n9 && legal(s) && s.base.buildings.every(b => slots2.has(b.type + b.x + ',' + b.y)), 'full core 9 base moves onto another preset');
+s = CS.State.newGame(Date.now());
+r = CS.Presets.apply(s, 1);
+ok(r.ok && s.base.buildings.length === 9 && legal(s), 'starter base applies a preset, missing buildings skipped');
+// Admin cheats
+s = CS.State.newGame(Date.now());
+let t = Date.now();
+CS.Admin.set(s, 'rich', true);
+CS.Eco.advance(s, t, t + 1000);
+ok(s.res.credits >= CS.Admin.RICH && s.res.energy >= CS.Admin.RICH, 'infinite resources');
+CS.Admin.set(s, 'instant', true);
+r = CS.Eco.startUpgrade(s, CS.Base.core(s), t + 1000);
+CS.Eco.advance(s, t + 1000, t + 1200);
+ok(r.ok && CS.Base.coreLevel(s) === 2, 'instant upgrade finishes on the next tick');
+CS.Admin.set(s, 'rich', false);
+ok(s.res.credits <= CS.Eco.capacity(s).credits, 'turning infinite resources off clamps to storage');
+CS.Admin.maxBase(s);
+ok(s.base.buildings.every(b => b.level === CS.Base.maxLevel(b.type)), 'max out every building');
+ok(CS.Admin.fillArmy(s) > 0 && CS.Army.armySpace(s) <= CS.Army.capacity(s), 'fill army stays within housing');
+// Backup files
+const good = JSON.stringify({ v: CS.CONFIG.saveVersion, savedAt: t, state: CS.State.newGame(t) });
+let restored = JSON.parse(CS.State.readBackup(good, t + 5));
+ok(restored.state.base.buildings.length === 9 && restored.state.lastTick === t + 5, 'valid backup accepted');
+const bad = ['not json', '{"hello":1}', JSON.stringify({ v: 99, state: CS.State.newGame(t) }), JSON.stringify({ v: 2, state: { base: 5 } })];
+ok(bad.every(txt => { try { CS.State.readBackup(txt, t); return false; } catch (e) { return /backup/.test(e.message); } }), 'bad backup files rejected with a reason');
+ok(CS.State.restore(good) && store[CS.CONFIG.saveKey] === good, 'restore writes the save');
+
 console.log(fails ? fails + ' FAILURES' : 'ALL PASSED');
 process.exitCode = fails ? 1 : 0;

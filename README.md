@@ -33,6 +33,7 @@ A short tutorial walks through the first steps; you can skip it and press **H** 
 | Recenter on your base | | Space |
 | Build menu | Build button | B |
 | Edit mode (move buildings) | Edit button | E |
+| Ready-made base layouts | Layouts button | P |
 | Rotate while placing | Rotate button | R |
 | Confirm or cancel placement | Check or cross button | Enter or Esc |
 | Lay a line of walls | Drag while placing a wall | |
@@ -51,6 +52,11 @@ The game saves to your browser's `localStorage` every 15 seconds, after every im
 - Every few saves a backup copy is kept. If the main save is ever damaged, the backup is restored automatically and the title screen tells you. If both are unreadable, a new game starts and the damaged data is kept aside under a separate key instead of being deleted.
 - The save keys are `clashOfCS.save`, `clashOfCS.save.backup` and `clashOfCS.save.corrupt`.
 - Saves include any battle in progress, so a reload drops you back into the same fight.
+- **Backup files:** Settings > Saving > Backup file downloads your whole game as a `.json` file. **Restore** checks a backup before using it, keeps the save it replaces under `clashOfCS.save.pre-restore`, and reloads the game. Use this to move a game to another browser or computer.
+
+## Base layouts
+
+The **Layouts** button (or `P`) offers three ready-made layouts for your Command Core level: Bastion Ring, Citadel and Quarters. Picking one moves every building you own into place; spots for buildings you have not built yet stay open. Each Core level has its own three layouts, sized to its build area and building limits.
 
 ## Starting over
 
@@ -95,10 +101,12 @@ js/base.js        building definitions, footprints, levels and placement rules
 js/research.js    troop upgrades and settlement technologies
 js/army.js        unlocks, housing and the training queue
 js/economy.js     resources, storage, construction, upgrades, repairs, timestamp-based time advance
+js/admin.js       the hidden admin panel's cheats
 js/state.js       new game, versioned save/load, validation and recovery of damaged saves, event log
 js/pathfinding.js A* for troops (walls cost the time it takes to break them)
 js/battle.js      fixed-tick, deterministic battle simulation for raids and defenses
 js/npc.js         the fifteen settlements, their layouts, loot, difficulty and world activity
+js/presets.js     three ready-made base layouts per Command Core level
 js/threat.js      scheduling NPC raids on your base and applying their results
 js/timesys.js     catching up after an absence, including offline raids
 js/audio.js       synthesized sound effects and music

@@ -322,6 +322,7 @@
     opts = opts || {};
     const events = opts.events || [];
     if (!(t1 > t0)) return events;
+    if (CS.Admin) CS.Admin.apply(state, t0);
     const scale = opts.prodScale == null ? 1 : opts.prodScale;
     const marks = [];
     state.base.buildings.forEach(function (b) { if (b.timer && b.timer.end > t0 && b.timer.end < t1) marks.push(b.timer.end); });

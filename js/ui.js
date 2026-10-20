@@ -250,7 +250,7 @@
   }
 
   function bottomHtml() {
-    return toolBtn('build', 'hammer', 'Build', 'B') + toolBtn('edit', 'move', 'Edit', 'E') +
+    return toolBtn('build', 'hammer', 'Build', 'B') + toolBtn('edit', 'move', 'Edit', 'E') + toolBtn('layouts', 'home', 'Layouts', 'P') +
       toolBtn('collect', 'sack', 'Collect', 'C', '<b class="badge" id="tbReady"></b>') + '<span id="repairWrap"></span>';
   }
 
@@ -1098,15 +1098,67 @@
       group('Display', toggle('showGrid', 'Always show the grid', 'The grid always appears while building or editing.')) +
       group('Raids', srow('NPC raids on your base', 'How often enemy settlements attack you. Shields, a protection period and loot caps always apply.',
         '<div class="segs" role="radiogroup" aria-label="NPC raids on your base">' + modes + '</div>', 'col')) +
+      group('Base layouts', srow('Ready-made layouts', 'Three proven layouts for your Command Core level. Your buildings move into place.',
+        '<button class="sbtn" data-act="layouts">' + ic('home') + 'Browse</button>')) +
       group('Saving', srow(status, sub, '<button class="sbtn" data-act="saveNow">Save now</button>') +
+        srow('Backup file', 'Download your whole game as a file, or restore one you downloaded earlier.',
+          '<span class="sbtns"><button class="sbtn" data-act="backup">Download</button><button class="sbtn" data-act="restorePick">Restore</button></span>' +
+          '<input type="file" id="restoreFile" accept=".json,application/json" hidden>') +
         '<div class="srow acts"><button class="sbtn" data-act="help">' + ic('help') + 'Controls &amp; help</button><button class="sbtn danger" data-act="resetGame">Start a new game</button></div>') +
-      '<p class="hint mfoot">Clash of CS runs entirely in your browser with no internet connection or accounts.</p></div>';
+      '<p class="hint mfoot" data-act="secret">Clash of CS runs entirely in your browser with no internet connection or accounts.</p></div>';
+  };
+
+  // ----- base layouts
+  // Isometric thumbnail of a preset, drawn from its slots on the core level's build area.
+  function presetSvg(core, i) {
+    const area = Base.buildArea(core), n = area.size;
+    const rects = CS.Presets.layout(core, i).map(function (b) {
+      const cat = C.buildings[b.type].category;
+      if (cat === 'trap') return '';
+      const sz = Base.size(b.type, b.rot);
+      return '<rect class="pv-' + cat + '" x="' + b.x + '" y="' + b.y + '" width="' + sz[0] + '" height="' + sz[1] + '"/>';
+    }).join('');
+    return '<svg class="pv" viewBox="' + -n + ' ' + area.x0 + ' ' + 2 * n + ' ' + n + '" aria-hidden="true"><g transform="matrix(1 0.5 -1 0.5 0 0)">' +
+      '<rect class="pv-ground" x="' + area.x0 + '" y="' + area.y0 + '" width="' + n + '" height="' + n + '"/>' + rects + '</g></svg>';
+  }
+
+  MODALS.layouts = function () {
+    const core = Base.coreLevel(G.state);
+    const cards = CS.Presets.STYLES.map(function (p, i) {
+      return '<div class="preset">' + presetSvg(core, i) + '<b>' + p.name + '</b><small>' + p.desc + '</small>' +
+        '<button class="mbtn primary" data-act="usePreset" data-i="' + i + '"' + (G.mode !== 'village' ? ' disabled' : '') + '><span>Use this layout</span></button></div>';
+    }).join('');
+    return head('Base Layouts &middot; Core Lv ' + core, 'home') + '<div class="mbody"><p class="lead">Pick a layout and every building you own moves into place. ' +
+      'Spots for buildings you have not built yet stay open, so new ones slot in later. Each Command Core level has its own three layouts.</p>' +
+      '<div class="presets">' + cards + '</div>' +
+      '<p class="hint pv-key"><i class="pv-core"></i>Core <i class="pv-defense"></i>Defenses <i class="pv-economy"></i>Resources <i class="pv-army"></i>Army <i class="pv-wall"></i>Walls</p></div>';
+  };
+
+  // ----- admin
+  MODALS.adminCode = function () {
+    return head('Restricted', 'lock') + '<div class="mbody"><p class="ctext">Enter the access code.</p>' +
+      '<input id="adminCode" class="code" type="password" autocomplete="off" aria-label="Access code">' +
+      '<div class="mact"><button class="mbtn ghost" data-act="close">Cancel</button><button class="mbtn primary" data-act="adminEnter">Enter</button></div></div>';
+  };
+
+  MODALS.admin = function () {
+    const c = G.state.cheats;
+    const sw = function (key, label, sub) {
+      return srow(label, sub, '<button class="switch' + (c[key] ? ' on' : '') + '" role="switch" aria-checked="' + c[key] + '" aria-label="' + label + '" data-act="cheat" data-key="' + key + '"><span></span></button>');
+    };
+    const btn = function (act, icon, label) { return '<button class="sbtn" data-act="adminDo" data-v="' + act + '">' + ic(icon) + label + '</button>'; };
+    return head('Admin Panel', 'core') + '<div class="mbody">' +
+      group('Cheats', sw('rich', 'Infinite resources', 'Credits and Energy never run out.') +
+        sw('instant', 'Instant everything', 'Construction, upgrades, training and research finish at once.') +
+        sw('heroes', 'Tireless heroes', 'Heroes are ready again right after every battle.')) +
+      group('One-time actions', '<div class="srow acts">' + btn('maxBase', 'up', 'Max out every building') + btn('fillArmy', 'army', 'Fill the army') +
+        btn('shield', 'shield', '24 hour shield') + '</div>') + '</div>';
   };
 
   const KEYS = [
     ['Camera', [['Move the camera', 'Drag, arrow keys or <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd>'], ['Zoom', 'Mouse wheel, pinch or <kbd>+</kbd><kbd>-</kbd>'],
       ['Recenter on your base', '<kbd>Space</kbd>']]],
-    ['Village', [['Inspect, collect, upgrade', 'Click or tap a building'], ['Build menu', '<kbd>B</kbd>'], ['Edit mode (move buildings)', '<kbd>E</kbd>'],
+    ['Village', [['Inspect, collect, upgrade', 'Click or tap a building'], ['Build menu', '<kbd>B</kbd>'], ['Edit mode (move buildings)', '<kbd>E</kbd>'], ['Base layouts', '<kbd>P</kbd>'],
       ['Rotate while placing, otherwise Research', '<kbd>R</kbd>'], ['Place the building', '<kbd>Enter</kbd>'], ['Army and training', '<kbd>T</kbd>'], ['World map', '<kbd>M</kbd>'],
       ['Event log', '<kbd>L</kbd>'], ['Collect all resources', '<kbd>C</kbd>'], ['Controls and help', '<kbd>H</kbd>'], ['Close or cancel, otherwise Settings', '<kbd>Esc</kbd>']]],
     ['Raids', [['Pick a troop', '<kbd>1</kbd>&ndash;<kbd>6</kbd>'], ['Deploy troops', 'Tap, or hold for a stream'], ['Deploy at the cursor', '<kbd>Space</kbd>'], ['Battle speed', '<kbd>F</kbd>']]]
@@ -1235,6 +1287,40 @@
         }, 0);
       });
     },
+    layouts: function () { UI.open('layouts'); },
+    usePreset: function (el) {
+      const i = Number(el.dataset.i);
+      UI.confirm({ title: 'Use the ' + CS.Presets.STYLES[i].name + ' layout?', text: 'Every building in your base moves to this layout. Your current arrangement is not kept.', yes: 'Rearrange' },
+        function () { G.applyPreset(i); });
+    },
+    backup: function () {
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(new Blob([G.backupJson()], { type: 'application/json' }));
+      a.download = 'clash-of-cs-backup-' + new Date().toISOString().slice(0, 10) + '.json';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(function () { URL.revokeObjectURL(a.href); }, 1000);
+      UI.toast('Backup downloaded', 'good', 'check');
+    },
+    restorePick: function () { $('restoreFile').click(); },
+    secret: function () {
+      const t = performance.now();
+      UI._taps = (UI._taps || []).filter(function (x) { return t - x < 3000; }).concat(t);
+      if (UI._taps.length < 7) return;
+      UI._taps = [];
+      UI.open(UI.adminOk ? 'admin' : 'adminCode');
+      const f = $('adminCode');
+      if (f) f.focus();
+    },
+    adminEnter: function () {
+      const f = $('adminCode');
+      if (f && f.value.trim().toLowerCase() === CS.Admin.CODE) { UI.adminOk = true; UI.open('admin'); return; }
+      UI.toast('Wrong code', 'bad', 'lock');
+      if (f) { f.value = ''; f.focus(); }
+    },
+    cheat: function (el) { G.cheat(el.dataset.key, !G.state.cheats[el.dataset.key]); CS.Audio.play('click'); },
+    adminDo: function (el) { G.adminAction(el.dataset.v); CS.Audio.play('click'); },
     confirmYes: function () { const f = UI._confirm; UI._confirm = null; UI.close(); if (f) f(); },
     confirmNo: function () { UI._confirm = null; UI.close(); },
     awayCollect: function () { G.collectAll(); UI.close(); },
@@ -1527,7 +1613,7 @@
     updatePlacebar();
     updateThreat();
     defenseHudUpdate();
-    if (full && UI.modal && UI.modal !== 'confirm' && UI.modal !== 'results' && UI.modal !== 'away' && UI.modal !== 'defense') renderModal();
+    if (full && UI.modal && UI.modal !== 'confirm' && UI.modal !== 'results' && UI.modal !== 'away' && UI.modal !== 'defense' && UI.modal !== 'adminCode') renderModal();
   };
 
   UI.tick = function () {
@@ -1612,10 +1698,30 @@
     });
     document.addEventListener('change', function (e) {
       if (e.target.dataset && e.target.dataset.range === 'volume') G.save();
+      if (e.target.id === 'restoreFile') readRestore(e.target);
+    });
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' && e.target.id === 'adminCode') { e.preventDefault(); ACT.adminEnter(); }
     });
     window.addEventListener('resize', measureInsets);
     initTooltips();
   };
+
+  function readRestore(input) {
+    const file = input.files && input.files[0];
+    input.value = '';
+    if (!file) return;
+    if (file.size > 5e6) { UI.toast('That file is too big to be a backup', 'bad', 'warn'); return; }
+    const rd = new FileReader();
+    rd.onerror = function () { UI.toast('The file could not be read', 'bad', 'warn'); };
+    rd.onload = function () {
+      let json;
+      try { json = CS.State.readBackup(String(rd.result), CS.Clock.now()); } catch (err) { UI.toast(err.message, 'bad', 'warn'); return; }
+      UI.confirm({ title: 'Restore this backup?', text: 'Your current game is replaced by the backup from ' + file.name + '. The game reloads to finish.', yes: 'Restore', danger: true },
+        function () { G.restore(json); });
+    };
+    rd.readAsText(file);
+  }
 
   CS.UI = UI;
 })(window.CS = window.CS || {});
