@@ -193,7 +193,7 @@ p { margin: 0; }
 .row.end { justify-content: flex-end; margin-top: 14px; }
 
 /* tabs: text with a brass underline, not pills */
-.tabs { display: flex; gap: 2px; padding: 0 16px; border-bottom: 1px solid var(--sep); overflow-x: auto; scrollbar-width: none; }
+.tabs { flex: none; display: flex; gap: 2px; padding: 0 16px; border-bottom: 1px solid var(--sep); overflow-x: auto; scrollbar-width: none; }
 .tab { position: relative; padding: 10px 12px 9px; color: var(--cream-3); font-weight: 600; white-space: nowrap; }
 .tab:hover { color: var(--cream); }
 .tab.on { color: var(--cream); }
@@ -268,6 +268,7 @@ input[type="range"] { width: 180px; accent-color: var(--brass); }
 .hb-pinfo .bar { height: 4px; }
 .hb-renown { display: inline-flex; align-items: center; gap: 4px; font-weight: 600; font-variant-numeric: tabular-nums; }
 .hb-renown .ic { width: 18px; height: 18px; }
+.hb-renown .ic.lg { width: 20px; height: 20px; }
 
 .hb-res { gap: 9px !important; min-width: 190px; }
 .hb-res > .ic { width: 28px; height: 28px; }
@@ -318,6 +319,8 @@ input[type="range"] { width: 180px; accent-color: var(--brass); }
 .tool:disabled .ic { filter: grayscale(0.9); opacity: 0.45; }
 .tool .badge { position: absolute; top: 4px; right: 6px; min-width: 18px; height: 18px; padding: 0 4px; border-radius: 9px; background: var(--gold); color: #2a1b0c; font: 700 var(--fs-micro)/18px var(--font-ui); text-align: center; box-shadow: 0 0 0 2px var(--ink-800); }
 .tool .badge:empty { display: none; }
+.nav .badge { position: absolute; top: 3px; right: 4px; min-width: 18px; height: 18px; padding: 0 4px; border-radius: 9px; background: var(--gold); color: #2a1b0c; font: 700 var(--fs-micro)/18px var(--font-ui); text-align: center; box-shadow: 0 0 0 2px var(--ink-800); }
+.nav .badge:empty { display: none; }
 .tool.repair { width: auto; min-width: 76px; padding: 0 10px; }
 .tool.repair .cost { font-size: var(--fs-micro); color: var(--cream); }
 .tool.repair .cost.short { color: #ff8b73; }
@@ -413,7 +416,7 @@ body:has(#threat.show) #panel { top: 154px; max-height: calc(100vh - 154px - 90p
 #defhud:not(.hidden) ~ #modal { --m-top: 142px; }
 .mbox:focus-visible { outline: none; }   /* the window itself takes focus on open; its controls show the ring */
 #modal.m-build .mbox, #modal.m-army .mbox { width: min(1000px, 100%); }
-#modal.m-research .mbox { width: min(820px, 100%); }
+#modal.m-research .mbox, #modal.m-goals .mbox { width: min(820px, 100%); }
 #modal.m-world .mbox { width: min(1240px, 100%); height: min(800px, 100%); }
 #modal.m-help .mbox { width: min(880px, 100%); }
 #modal.m-log .mbox { width: min(680px, 100%); }
@@ -532,6 +535,34 @@ body:has(#threat.show) #panel { top: 154px; max-height: calc(100vh - 154px - 90p
 .rrow.locked, .rrow.done { background: var(--ink-800); }
 .rrow.locked .r-art :is(.tthumb, .ic) { filter: grayscale(1) brightness(0.55); }
 .rrow.locked :is(.r-name, .r-eff) { opacity: 0.65; }
+
+/* ---- goals: daily goals, achievements and the league ladder (rows reuse .rrow) */
+.grow .r-art .stars { display: flex; gap: 0; }
+.grow .r-art .stars .ic { width: 16px; height: 16px; }
+.grow .r-side { flex-wrap: wrap; justify-content: flex-end; }
+.grow .rcost { flex-direction: row; flex-wrap: wrap; justify-content: flex-end; gap: 4px 8px; }
+.grow .rcost small { display: inline-flex; align-items: center; gap: 4px; color: var(--cream-3); }
+.grow .rcost small .ic { width: 14px; height: 14px; }
+.grow.ready { box-shadow: var(--hi), inset 0 0 0 1px var(--brass); }
+.grow.cur { box-shadow: var(--hi), inset 0 0 0 1px var(--brass); background: var(--ink-700); }
+.grow.locked .r-art > .ic { filter: grayscale(0.6) brightness(0.75); }
+.gprog { display: flex; align-items: center; gap: 8px; margin-top: 2px; }
+.gprog .bar { flex: 1; height: 6px; }
+.gprog small { flex: none; color: var(--cream-3); font-variant-numeric: tabular-nums; }
+.sbtn.claim { background: var(--green-deep); color: var(--cream); box-shadow: inset 0 0 0 1px var(--brass-line); }
+.tcount { display: inline-block; min-width: 18px; height: 18px; padding: 0 4px; margin-left: 4px; border-radius: 9px; background: var(--gold); color: #2a1b0c; font: 700 var(--fs-micro)/18px var(--font-ui); text-align: center; }
+.lgcur { display: flex; align-items: center; gap: 14px; padding: 10px 14px 10px 10px; margin-bottom: 4px; border-radius: var(--r); background: var(--well); box-shadow: inset 0 0 0 1px var(--brass-line); }
+.lgbig { flex: none; width: 76px; height: 76px; }
+.lgbig svg { width: 100%; height: 100%; display: block; }
+.lg-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.lg-main .r-name { font-size: var(--fs-lg); }
+.lg-main .r-eff .ic { width: 16px; height: 16px; vertical-align: -3px; margin-right: 3px; }
+.lgline { display: inline-flex; align-items: center; gap: 5px; }
+.lgline .ic { width: 18px; height: 18px; }
+.tsave .ic { vertical-align: middle; }
+.fmode { display: flex; flex-direction: column; gap: 4px; margin: 6px 0; }
+.fmode small { color: var(--cream-3); }
+.fmode .seg:disabled { opacity: 0.5; }
 
 /* ---- world map: the painted map with settlement markers, and the selected settlement beside it */
 #modal.m-world .mbody { flex: 1; min-height: 0; display: flex; overflow: hidden; padding: 12px; }

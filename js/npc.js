@@ -65,7 +65,7 @@
     const rec = NPC.rec(state, s.id);
     const T = C.tiers[s.tier];
     const rng = new U.Rng(U.hash(s.id + ':loot'));
-    const bonus = 1 + rec.fortify * C.world.fortifyLootBonus;
+    const bonus = (1 + rec.fortify * C.world.fortifyLootBonus) * CS.League.of(state).loot;
     return {
       credits: Math.round(rng.range(T.loot[0], T.loot[1]) * bonus),
       energy: Math.round(rng.range(T.loot[0], T.loot[1]) * bonus)
@@ -96,12 +96,19 @@
     return opts[(U.hash(s.id) + rec.gen) % opts.length];
   };
 
+  // The player's league adds to the settlement's own fortification, so climbing makes every base tougher.
   NPC.layout = function (state, s) {
     const rec = NPC.rec(state, s.id);
-    const key = s.id + ':' + rec.gen + ':' + rec.fortify;
+    const fort = rec.fortify + CS.League.of(state).npcBoost;
+    const key = s.id + ':' + rec.gen + ':' + fort;
     let lay = layoutCache.get(key);
     if (!lay) {
-      lay = NPC.generate(s.defense ? NPC.bossSpec(s) : s.tier, rec.fortify, NPC.seed(s, rec), NPC.archetype(s, rec));
+      lay = NPC.generate(s.defense ? NPC.bossSpec(s) : s.tier, fort, NPC.seed(s, rec), NPC.archetype(s, rec));
+      // about half of the defenses that can fire bursting shells are set to do so (hashed, so the RNG stream is untouched)
+      lay.forEach(function (b) {
+        const M = C.buildings[b.type].modes;
+        if (M && b.level >= M.lv && U.hash(key + ':' + b.id) % 2) b.mode = 'splash';
+      });
       layoutCache.set(key, lay);
     }
     return lay;
@@ -424,6 +431,7 @@
         const A = def.attack;
         let dps = A.kind === 'lance' ? L.dmg * 2.5 : L.dmg / A.period;
         if (A.splash || A.cone || A.targeting === 'aura') dps *= 2.2;
+        else if (b.mode === 'splash' && def.modes) dps *= 2.2 * def.modes.dmgMult;
         dps *= (A.shots || 1) * (A.chain ? 2 : 1);
         if (A.kind === 'frost') dps = 6 + L.slow * 40;
         else if (L.slow) dps += L.slow * 40;
@@ -497,6 +505,7 @@
     const fac = NPC.faction(s);
     const core = Base.coreLevel(state);
     let space = Math.round(C.attacks.armySpaceByCore[core - 1] * (0.85 + 0.3 * rng.next()) * (0.92 + fac.aggression * 0.12));
+    space = Math.round(space * CS.League.of(state).raidArmy);
     if (!(state.stats.defended + state.stats.raided)) space = Math.round(space * 0.7);   // the first raid ever is a gentle introduction
     const allowed = C.troopOrder.filter(function (t) { return CS.Army.unlockLevel(t) <= core; });
     let pool = fac.troops.filter(function (t) { return allowed.indexOf(t) >= 0; });

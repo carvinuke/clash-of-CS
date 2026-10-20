@@ -22,7 +22,7 @@
 
   const CONFIG = {
     saveKey: 'clashOfCS.save',
-    saveVersion: 2,
+    saveVersion: 3,
     autosaveSec: 15,
 
     grid: {
@@ -214,6 +214,7 @@
         desc: 'Reliable cannon that locks onto the nearest ground target and keeps firing until it falls. Cannot hit flying troops.',
         max: [2, 2, 3, 3, 4, 5, 5, 6, 6],
         attack: { kind: 'blaster', ground: true, range: 7, period: 0.8, targeting: 'nearest', projectileSpeed: 14 },
+        modes: { lv: 4, splash: 1.1, dmgMult: 0.55 },   // from Lv 4 it can fire bursting shells instead
         levels: levels({
           hp:   [420, 500, 600, 720, 860, 1000, 1150, 1320, 1500],
           dmg:  [8, 10, 13, 17, 22, 28, 35, 43, 52],
@@ -227,6 +228,7 @@
         desc: 'Tall watchtower with a rapid repeating crossbow. Long reach, light bolts, and it shoots down flying troops.',
         max: [0, 1, 2, 3, 3, 4, 5, 5, 6],
         attack: { kind: 'spire', range: 8.5, period: 0.5, targeting: 'nearest', projectileSpeed: 18 },
+        modes: { lv: 4, splash: 0.9, dmgMult: 0.5 },
         levels: levels({
           hp:   [380, 450, 540, 650, 780, 920, 1080, 1250, 1430],
           dmg:  [5, 6, 8, 10, 13, 16, 20, 24, 29],
@@ -717,6 +719,61 @@
         normal: { label: 'Normal', freq: 1 },
         intense: { label: 'Intense', freq: 2 }
       }
+    },
+
+    // ---------------------------------------------------------------- trophy leagues
+    // Trophies (player.renown) decide the league. A higher league makes every NPC tougher
+    // (npcBoost works like extra fortification levels and raids bring a bigger army) and richer.
+    // reward = Credits and Energy paid once, the first time the player reaches the league.
+    leagues: [
+      { name: 'Recruit', min: 0, color: '#a39887', npcBoost: 0, loot: 1, raidArmy: 1, reward: 0 },
+      { name: 'Copper', min: 100, color: '#c8743f', npcBoost: 0, loot: 1.1, raidArmy: 1.05, reward: 2000 },
+      { name: 'Bronze', min: 250, color: '#b8873a', npcBoost: 1, loot: 1.2, raidArmy: 1.1, reward: 6000 },
+      { name: 'Silver', min: 500, color: '#c3ccd6', npcBoost: 1, loot: 1.3, raidArmy: 1.15, reward: 15000 },
+      { name: 'Gold', min: 850, color: '#f0c03a', npcBoost: 2, loot: 1.45, raidArmy: 1.2, reward: 35000 },
+      { name: 'Crystal', min: 1300, color: '#b98cff', npcBoost: 2, loot: 1.6, raidArmy: 1.25, reward: 70000 },
+      { name: 'Titan', min: 1900, color: '#ff6b45', npcBoost: 3, loot: 1.8, raidArmy: 1.3, reward: 120000 },
+      { name: 'Legend', min: 2600, color: '#6fe0d0', npcBoost: 3, loot: 2, raidArmy: 1.4, reward: 200000 }
+    ],
+
+    // ---------------------------------------------------------------- achievements and daily goals
+    // stat names are read by CS.Goals.value. Every achievement has three tiers with shared rewards.
+    achievements: [
+      { id: 'raider', name: 'Warlord', text: 'Win {n} raids', stat: 'raidsWon', tiers: [5, 25, 100] },
+      { id: 'flawless', name: 'Flawless', text: 'Earn {n} three-star victories', stat: 'stars3', tiers: [3, 15, 50] },
+      { id: 'plunder', name: 'Plunderer', text: 'Loot {n} resources in raids', stat: 'loot', tiers: [20000, 250000, 2000000] },
+      { id: 'bulwark', name: 'Bulwark', text: 'Repel {n} raids on your base', stat: 'defended', tiers: [3, 15, 50] },
+      { id: 'builder', name: 'Master Builder', text: 'Reach Command Core Lv {n}', stat: 'core', tiers: [3, 6, 9] },
+      { id: 'climber', name: 'Ladder Climber', text: 'Reach {n} trophies', stat: 'bestTrophies', tiers: [250, 850, 1900] },
+      { id: 'slayer', name: 'Boss Slayer', text: 'Defeat {n} boss stronghold{s}', stat: 'bosses', tiers: [1, 2, 3] },
+      { id: 'scholar', name: 'Scholar', text: 'Complete {n} research levels', stat: 'research', tiers: [5, 20, 45] },
+      { id: 'caster', name: 'Spellweaver', text: 'Cast {n} spells in raids', stat: 'spellsCast', tiers: [10, 50, 200] },
+      { id: 'drill', name: 'Drillmaster', text: 'Train {n} troops', stat: 'trained', tiers: [100, 1000, 5000] }
+    ],
+    achievementRewards: [
+      { credits: 2000, energy: 2000, xp: 20 },
+      { credits: 15000, energy: 15000, xp: 60 },
+      { credits: 80000, energy: 80000, xp: 150 }
+    ],
+
+    // Three goals a day, picked from this pool and reset at local midnight. A goal pays
+    // rewardByCore (by Command Core level) of its resource; finishing all three pays a bonus chest
+    // of bonusMult times that in both resources. n or nByCore is the target; core = needs that Core level.
+    daily: {
+      count: 3,
+      rewardByCore: [300, 800, 2000, 4500, 9000, 16000, 25000, 36000, 50000],
+      bonusMult: 2,
+      goals: [
+        { id: 'win', text: 'Win {n} raids', stat: 'raidsWon', n: 3, res: 'credits' },
+        { id: 'stars', text: 'Earn a three-star victory', stat: 'stars3', n: 1, res: 'energy' },
+        { id: 'loot', text: 'Loot {n} resources in raids', stat: 'loot', nByCore: [1500, 4000, 10000, 22000, 45000, 80000, 120000, 160000, 200000], res: 'credits' },
+        { id: 'defend', text: 'Repel a raid on your base', stat: 'defended', n: 1, res: 'energy', raids: true },
+        { id: 'train', text: 'Train {n} troops', stat: 'trained', nByCore: [15, 25, 30, 40, 50, 60, 70, 80, 90], res: 'credits' },
+        { id: 'collect', text: 'Collect {n} resources from generators', stat: 'collected', nByCore: [800, 2500, 6000, 15000, 30000, 50000, 80000, 110000, 150000], res: 'energy' },
+        { id: 'build', text: 'Start {n} constructions or upgrades', stat: 'builds', n: 2, res: 'credits' },
+        { id: 'cast', text: 'Cast {n} spells in raids', stat: 'spellsCast', n: 3, res: 'energy', core: 3 },
+        { id: 'climb', text: 'Win {n} trophies', stat: 'trophiesWon', n: 40, res: 'credits' }
+      ]
     },
 
     player: {

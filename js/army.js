@@ -121,6 +121,7 @@
       army.progress -= need;
       army.units[head.type] = (army.units[head.type] || 0) + 1;
       head.count--;
+      state.stats.trained++;
       if (events) events.push({ type: 'trained', troop: head.type });
       if (head.count <= 0) army.queue.shift();
     }

@@ -113,7 +113,7 @@
       const maxHp = Base.maxHp(state, b);
       const o = {
         id: b.id, type: b.type, level: Math.max(1, b.level), x: b.x, y: b.y, w: sz[0], h: sz[1], rot: b.rot,
-        hp: Math.max(1, maxHp - (b.dmg || 0)), func: Base.isFunctional(b), loot: null
+        hp: Math.max(1, maxHp - (b.dmg || 0)), func: Base.isFunctional(b), loot: null, mode: b.mode
       };
       if (def.produces && b.stored >= 1) collectors[def.produces].push({ o: o, amt: b.stored });
       if ((def.stores || def.storesBoth || b.type === 'core') && b.level >= 1) {

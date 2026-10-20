@@ -7,7 +7,7 @@ const ctx = { console: Object.assign({}, console, { warn: function () {} }), Mat
 ctx.window = ctx;
 ctx.localStorage = { getItem: k => store[k] ?? null, setItem: (k, v) => { store[k] = String(v); }, removeItem: k => { delete store[k]; } };
 vm.createContext(ctx);
-const files = ['config','util','base','research','army','economy','admin','state','pathfinding','battle','npc','presets','threat','timesys'];
+const files = ['config','util','base','research','army','economy','admin','state','pathfinding','battle','npc','goals','presets','threat','timesys'];
 for (const f of files) vm.runInContext(fs.readFileSync(path.join(root, 'js', f + '.js'), 'utf8'), ctx, { filename: f + '.js' });
 const CS = ctx.CS;
 let fails = 0;
@@ -435,6 +435,78 @@ ok(restored.state.base.buildings.length === 9 && restored.state.lastTick === t +
 const bad = ['not json', '{"hello":1}', JSON.stringify({ v: 99, state: CS.State.newGame(t) }), JSON.stringify({ v: 2, state: { base: 5 } })];
 ok(bad.every(txt => { try { CS.State.readBackup(txt, t); return false; } catch (e) { return /backup/.test(e.message); } }), 'bad backup files rejected with a reason');
 ok(CS.State.restore(good) && store[CS.CONFIG.saveKey] === good, 'restore writes the save');
+
+// Defense modes: a Lv 4+ Blaster in splash mode trades single-target damage for bursts that hit a whole clump.
+{
+  const mk = (level, mode) => CS.Battle.create({ kind: 'attack', seed: 9, timeLimit: 150, troops: { scout: 12 }, troopLevels: {},
+    buildings: [{ id: 1, type: 'core', level: 1, x: 20, y: 20, w: 4, h: 4 }, { id: 2, type: 'blaster', level, x: 14, y: 21, w: 3, h: 3, mode }] });
+  const run = (level, mode) => { const b = mk(level, mode); for (let i = 0; i < 12; i++) CS.Battle.deploy(b, 'scout', 9, 21 + (i % 3) * 0.3); CS.Battle.runToEnd(b); return { b, res: CS.Battle.result(b) }; };
+  const one = run(4), splash = run(4, 'splash'), low = run(3, 'splash');
+  const atk = splash.b.buildings[1].atk, M = CS.CONFIG.buildings.blaster.modes;
+  ok(atk.splash === M.splash && Math.abs(atk.dmg - CS.CONFIG.buildings.blaster.levels[3].dmg * M.dmgMult) < 1e-9, 'splash mode lowers damage and adds splash');
+  ok(low.b.buildings[1].atk.splash === 0, 'splash mode needs Blaster Lv ' + M.lv);
+  ok(splash.res.dmg.blaster > one.res.dmg.blaster, 'splash blaster deals more total damage to a clump (' + Math.round(splash.res.dmg.blaster) + ' vs ' + Math.round(one.res.dmg.blaster) + ')');
+  const sv = CS.State.newGame(t); sv.base.buildings[0].mode = 'splash'; sv.base.buildings[1].mode = 'weird';
+  const san = CS.State.sanitize(JSON.parse(JSON.stringify(sv)), t);
+  ok(san.base.buildings.every(b => b.mode === undefined), 'sanitize drops modes on buildings that have none');
+}
+
+// Trophy leagues: promotion pays each league's reward once; higher leagues make NPCs tougher and richer.
+{
+  const L = CS.League, LG = CS.CONFIG.leagues;
+  ok(L.index(0) === 0 && L.index(LG[1].min - 1) === 0 && L.index(LG[1].min) === 1 && L.index(1e9) === LG.length - 1, 'league thresholds');
+  const g = CS.State.newGame(t);
+  g.res.credits = g.res.energy = 0;
+  CS.Player.addRenown(g, LG[2].min);
+  ok(g.player.bestLeague === 2 && g.res.credits === Math.min(LG[1].reward + LG[2].reward, CS.Eco.capacity(g).credits), 'promotion pays each league reached (' + g.res.credits + ')');
+  CS.Player.addRenown(g, -LG[2].min); g.res.credits = 0; CS.Player.addRenown(g, LG[2].min);
+  ok(g.res.credits === 0 && g.player.bestRenown === LG[2].min && g.stats.trophiesWon === 2 * LG[2].min, 'league rewards are paid only once');
+  const base = CS.State.newGame(t), high = CS.State.newGame(t);
+  CS.Player.addRenown(high, LG[6].min);
+  const sdef = CS.NPC.def('ironroot-hold');
+  const lv = st => CS.NPC.layout(st, sdef).filter(b => CS.CONFIG.buildings[b.type].category === 'defense').reduce((a, b) => a + b.level, 0);
+  ok(lv(high) > lv(base), 'a higher league raises NPC defense levels (' + lv(base) + ' -> ' + lv(high) + ')');
+  ok(CS.NPC.maxLoot(high, sdef).credits > CS.NPC.maxLoot(base, sdef).credits, 'a higher league raises NPC loot');
+  ok(CS.NPC.layout(high, sdef).some(b => b.mode === 'splash'), 'NPC bases use splash mode on some defenses');
+  ok(CS.NPC.layout(base, CS.NPC.def('mossy-hollow')).every(b => !b.mode), 'low-level NPC defenses stay single-target');
+  const arm = st => Object.entries(CS.NPC.attackArmy(st, 'mossy-hollow', new CS.U.Rng(5))).reduce((a, e) => a + CS.CONFIG.troops[e[0]].space * e[1], 0);
+  ok(arm(high) > arm(base), 'a higher league brings bigger raiding armies (' + arm(base) + ' -> ' + arm(high) + ')');
+  // migration from v2: leagues already held count as reached, with no back-pay
+  const old = CS.State.newGame(t); old.version = 2; old.player.renown = LG[3].min + 10; delete old.player.bestLeague; delete old.player.bestRenown; delete old.achievements; delete old.daily;
+  const credits = old.res.credits;
+  const mig = CS.State.sanitize(JSON.parse(JSON.stringify(old)), t);
+  ok(mig.version === CS.CONFIG.saveVersion && mig.player.bestLeague === 3 && mig.player.bestRenown === LG[3].min + 10 && mig.res.credits === credits, 'v2 saves migrate to leagues without back-pay');
+  ok(mig.stats.stars3 === 0 && mig.daily.goals.length === 0 && Object.keys(mig.achievements).length === 0, 'v2 saves get empty goal progress');
+}
+
+// Achievements and daily goals.
+{
+  const G2 = CS.Goals, g = CS.State.newGame(t);
+  const raider = CS.CONFIG.achievements.find(a => a.id === 'raider');
+  ok(!G2.achievement(g, raider).ready && G2.claimAchievement(g, 'raider') === null, 'nothing to claim at the start');
+  g.stats.raidsWon = raider.tiers[1];
+  g.res.credits = 0;
+  ok(G2.achievement(g, raider).ready && G2.claimAchievement(g, 'raider') && g.res.credits === CS.CONFIG.achievementRewards[0].credits, 'claim the first tier');
+  ok(G2.claimAchievement(g, 'raider') && G2.achievement(g, raider).claimed === 2 && !G2.claimAchievement(g, 'raider'), 'tiers claim one at a time, never twice');
+  const day = new Date(2026, 9, 20, 9).getTime();
+  const D = G2.daily(g, day);
+  ok(D.goals.length === CS.CONFIG.daily.count && new Set(D.goals.map(x => x.id)).size === D.goals.length, 'three different daily goals');
+  ok(G2.daily(g, day + 3600000).goals === D.goals, 'goals stay the same all day');
+  ok(D.goals.every(x => x.id !== 'cast'), 'goals needing a higher Command Core are skipped');
+  const i0 = D.goals[0], def0 = CS.CONFIG.daily.goals.find(x => x.id === i0.id);
+  ok(!G2.dailyGoal(g, i0).ready && G2.claimDaily(g, 0, day) === null, 'an unfinished goal cannot be claimed');
+  if (['loot'].includes(def0.stat)) g.stats.lootCredits += i0.n; else if (def0.stat === 'bestTrophies') g.player.bestRenown += i0.n; else g.stats[def0.stat] += i0.n;
+  ok(G2.dailyGoal(g, i0).ready && G2.claimDaily(g, 0, day) && !G2.claimDaily(g, 0, day), 'a finished goal pays once (' + i0.id + ')');
+  D.goals.forEach(x => { x.claimed = 1; });
+  g.res.credits = 0;
+  ok(G2.bonusReady(g, day) && G2.claimBonus(g, day) && g.res.credits > 0 && !G2.claimBonus(g, day), 'all three goals unlock the bonus chest once');
+  const day0 = D.day, next = G2.daily(g, day + 86400000);
+  ok(next.day !== day0 && next.goals.every(x => !x.claimed) && !next.bonus, 'goals reset the next day');
+  ok(G2.claimable(g, day + 86400000) >= 0, 'claimable count');
+  const bad = CS.State.newGame(t); bad.daily = { day: 'x', goals: [{ id: 'nope' }], bonus: 3 }; bad.achievements = { raider: 9, fake: 1 };
+  const sb = CS.State.sanitize(JSON.parse(JSON.stringify(bad)), t);
+  ok(sb.daily.day === '' && sb.daily.goals.length === 0 && sb.achievements.raider === 3 && !('fake' in sb.achievements), 'sanitize repairs goal data');
+}
 
 console.log(fails ? fails + ' FAILURES' : 'ALL PASSED');
 process.exitCode = fails ? 1 : 0;
