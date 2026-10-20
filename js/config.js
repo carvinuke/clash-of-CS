@@ -22,7 +22,7 @@
 
   const CONFIG = {
     saveKey: 'clashOfCS.save',
-    saveVersion: 1,
+    saveVersion: 2,
     autosaveSec: 15,
 
     grid: {

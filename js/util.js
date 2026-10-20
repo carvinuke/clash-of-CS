@@ -50,6 +50,9 @@
     return (n / 1e6).toFixed(2).replace(/\.?0+$/, '') + 'M';
   };
 
+  // Whole percent rounded down, so 49.6% destruction never reads as the 50% a win needs.
+  U.pct = function (f) { return Math.floor(f * 100 + 1e-6); };
+
   U.fmtTime = function (sec) {
     sec = Math.max(0, Math.ceil(sec));
     if (sec < 60) return sec + 's';

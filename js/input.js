@@ -76,6 +76,7 @@
       return;
     }
     I.mouse = { x: e.clientX, y: e.clientY };
+    G.pointer = e.target === cv && e.pointerType === 'mouse' ? I.mouse : null;
     if (!down) { hover(e); return; }
     if (e.pointerId !== down.id) return;
     const dx = e.clientX - down.lx, dy = e.clientY - down.ly;
@@ -92,7 +93,7 @@
   }
 
   function hover(e) {
-    if (e.target !== cv || G.paused) return;
+    if (e.target !== cv || G.paused) { G.hover = null; return; }
     if (G.place && e.pointerType === 'mouse') {
       const t = tileAt(e.clientX, e.clientY);
       G.movePlace(t[0], t[1]);
@@ -106,6 +107,7 @@
       return;
     }
     const id = G.pickAt(e.clientX, e.clientY);
+    G.hover = id ? { id: id } : null;
     cv.style.cursor = id ? 'pointer' : G.edit ? 'move' : 'grab';
   }
 
@@ -226,6 +228,7 @@
     window.addEventListener('pointercancel', onUp);
     cv.addEventListener('wheel', onWheel, { passive: false });
     cv.addEventListener('contextmenu', function (e) { e.preventDefault(); });
+    cv.addEventListener('pointerleave', function () { G.pointer = null; G.hover = null; });
     window.addEventListener('keydown', onKey);
     window.addEventListener('keyup', function (e) { keys[e.key.toLowerCase()] = false; });
     window.addEventListener('blur', function () { Object.keys(keys).forEach(function (k) { keys[k] = false; }); });

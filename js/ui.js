@@ -1,52 +1,35 @@
 /*
- * User interface: HUD, building panel, menus (build, army, research, world map, log, settings),
- * battle HUDs, reports, toasts and tooltips. Everything is plain DOM. Buttons carry a data-act
- * attribute and one delegated click handler runs the matching action, so markup can be
- * re-rendered freely. Countdowns update in place through data-until / data-from attributes.
+ * User interface: village HUD, building inspector, menus (build, army, research, world map, log,
+ * settings), battle HUDs, reports, event cards and tooltips. Everything is plain DOM styled by
+ * style.css. Buttons carry a data-act attribute and one delegated click handler runs the matching
+ * ACT entry, so markup can be re-rendered freely. Countdowns update in place through data-until /
+ * data-from attributes. Elements marked data-inset="t|r|b|l" tell the camera which screen edges
+ * the HUD covers, so framing a base keeps it clear of them.
  */
 (function (CS) {
   'use strict';
   const C = CS.CONFIG, U = CS.U, Base = CS.Base, Eco = CS.Eco, Army = CS.Army, NPC = CS.NPC, Spr = CS.Sprites;
   const $ = U.$, esc = U.esc;
   const UI = { modal: null, arg: null, tab: 'economy', worldSel: null };
+  const ACT = UI.ACT = {};   // click actions by data-act name; each section adds its own
   let G = null;
 
-  // ---------------------------------------------------------------- icons
-  const ICON = {
-    credits: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="#f6c443" stroke="#9c6a10" stroke-width="2"/><circle cx="12" cy="12" r="6.6" fill="none" stroke="#d29a26" stroke-width="1.4"/><path d="M14.8 9.3a3.7 3.7 0 1 0 0 5.4" fill="none" stroke="#86560a" stroke-width="2.2" stroke-linecap="round"/></svg>',
-    energy: '<svg viewBox="0 0 24 24"><path d="M13.6 1.6 4.2 13.4h6.4l-1.4 9 10.4-12.9h-6.5z" fill="#b66dff" stroke="#55248f" stroke-width="1.6" stroke-linejoin="round"/></svg>',
-    renown: '<svg viewBox="0 0 24 24"><path d="M7 3h10v5a5 5 0 0 1-10 0z" fill="#ffcf4a" stroke="#93630c" stroke-width="1.6"/><path d="M7 5H4a3 3 0 0 0 3 4M17 5h3a3 3 0 0 1-3 4" fill="none" stroke="#93630c" stroke-width="1.6"/><path d="M10 13h4l1 5H9z" fill="#e0a92e" stroke="#93630c" stroke-width="1.4"/><rect x="7" y="18" width="10" height="3" rx="1" fill="#b07b1c" stroke="#6f4a08" stroke-width="1.2"/></svg>',
-    hammer: '<svg viewBox="0 0 24 24"><path d="m13 7 4-4 4 4-4 4z" fill="#9aa6b2" stroke="#3b444d" stroke-width="1.5" stroke-linejoin="round"/><path d="m14 10-9.5 9.5a1.6 1.6 0 0 1-2.2-2.2L11.8 7.8" fill="#c58a4a" stroke="#5b3714" stroke-width="1.5" stroke-linejoin="round"/></svg>',
-    army: '<svg viewBox="0 0 24 24"><path d="M4 14a8 8 0 0 1 16 0v2H4z" fill="#5b8fe0" stroke="#1f3f78" stroke-width="1.6"/><path d="M3 16h18v3H3z" fill="#3c6bb8" stroke="#1f3f78" stroke-width="1.6"/><path d="M12 6V3" stroke="#1f3f78" stroke-width="2"/><circle cx="12" cy="3" r="1.6" fill="#ff5a4a"/></svg>',
-    shield: '<svg viewBox="0 0 24 24"><path d="M12 2 4 5v6c0 5 3.4 9.4 8 11 4.6-1.6 8-6 8-11V5z" fill="#4fb3ff" stroke="#145a8f" stroke-width="1.7" stroke-linejoin="round"/><path d="M12 5v14" stroke="#c7e9ff" stroke-width="1.6"/></svg>',
-    clock: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="#fff" stroke="#3d4650" stroke-width="2"/><path d="M12 7v5l3 2" fill="none" stroke="#3d4650" stroke-width="2" stroke-linecap="round"/></svg>',
-    star: '<svg viewBox="0 0 24 24"><path d="m12 2 3 6.6 7.2.7-5.4 4.8 1.6 7.1L12 17.5l-6.4 3.7 1.6-7.1L1.8 9.3 9 8.6z" fill="#ffd23f" stroke="#9a6a00" stroke-width="1.4" stroke-linejoin="round"/></svg>',
-    starOff: '<svg viewBox="0 0 24 24"><path d="m12 2 3 6.6 7.2.7-5.4 4.8 1.6 7.1L12 17.5l-6.4 3.7 1.6-7.1L1.8 9.3 9 8.6z" fill="rgba(0,0,0,0.25)" stroke="rgba(255,255,255,0.35)" stroke-width="1.4" stroke-linejoin="round"/></svg>',
-    sword: '<svg viewBox="0 0 24 24"><path d="M20 2 9 13l2 2L22 4V2z" fill="#dfe6ee" stroke="#3b444d" stroke-width="1.5" stroke-linejoin="round"/><path d="m6 13 5 5M4.5 17.5l2 2M8 16l-4.5 4.5" stroke="#6b4423" stroke-width="2.4" stroke-linecap="round"/></svg>',
-    flask: '<svg viewBox="0 0 24 24"><path d="M9 2h6M10 2v6l-6 11a2 2 0 0 0 1.8 3h12.4a2 2 0 0 0 1.8-3L14 8V2" fill="#e6f7ff" stroke="#2f5a6b" stroke-width="1.7" stroke-linejoin="round"/><path d="M6.5 15h11l2 4H4.5z" fill="#4fe0a0"/></svg>',
-    scroll: '<svg viewBox="0 0 24 24"><path d="M6 3h11a2 2 0 0 1 2 2v13a3 3 0 0 1-3 3H7" fill="#f3e1b6" stroke="#7a5a26" stroke-width="1.6"/><path d="M6 3a2 2 0 0 0-2 2v2h4V5a2 2 0 0 0-2-2zM7 21a3 3 0 0 1-3-3h9a3 3 0 0 0 3 3" fill="#e2c88e" stroke="#7a5a26" stroke-width="1.6"/><path d="M9 8h7M9 11h7M9 14h5" stroke="#7a5a26" stroke-width="1.4"/></svg>',
-    gear: '<svg viewBox="0 0 24 24"><path d="M10.3 2h3.4l.5 2.6 2.2 1 2.2-1.5 2.4 2.4-1.5 2.2 1 2.2 2.5.4v3.4l-2.5.5-1 2.2 1.5 2.2-2.4 2.4-2.2-1.5-2.2 1-.5 2.5h-3.4l-.4-2.5-2.3-1-2.1 1.5-2.4-2.4 1.5-2.2-1-2.2L2 13.7v-3.4l2.5-.4 1-2.2L4 5.5l2.4-2.4 2.2 1.5 2.2-1z" fill="#aab4bf" stroke="#3b444d" stroke-width="1.4" stroke-linejoin="round"/><circle cx="12" cy="12" r="3.4" fill="#3b444d"/></svg>',
-    move: '<svg viewBox="0 0 24 24"><path d="M12 2v20M2 12h20M12 2 9 5M12 2l3 3M12 22l-3-3M12 22l3-3M2 12l3-3M2 12l3 3M22 12l-3-3M22 12l-3 3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>',
-    rotate: '<svg viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.3-5.7M20 3v5h-5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>',
-    check: '<svg viewBox="0 0 24 24"><path d="m4 12 5 5L20 6" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>',
-    close: '<svg viewBox="0 0 24 24"><path d="M5 5l14 14M19 5 5 19" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg>',
-    wrench: '<svg viewBox="0 0 24 24"><path d="M14.5 3.5a5 5 0 0 0-6 6.2L3 15.2 5.8 18l5.5-5.5a5 5 0 0 0 6.2-6l-3 3-2.5-.5-.5-2.5z" fill="#c9d2dc" stroke="#3b444d" stroke-width="1.5" stroke-linejoin="round"/></svg>',
-    up: '<svg viewBox="0 0 24 24"><path d="M12 3 4 12h5v9h6v-9h5z" fill="#6fe07a" stroke="#1f6b2a" stroke-width="1.6" stroke-linejoin="round"/></svg>',
-    lock: '<svg viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="11" rx="2" fill="#8d96a0" stroke="#3b444d" stroke-width="1.6"/><path d="M8 10V7a4 4 0 0 1 8 0v3" fill="none" stroke="#3b444d" stroke-width="2"/></svg>',
-    skull: '<svg viewBox="0 0 24 24"><path d="M12 2a8 8 0 0 0-8 8c0 3 1.5 4.8 3 6v3h10v-3c1.5-1.2 3-3 3-6a8 8 0 0 0-8-8z" fill="#eee7da" stroke="#4a4038" stroke-width="1.6"/><circle cx="8.8" cy="11" r="2" fill="#4a4038"/><circle cx="15.2" cy="11" r="2" fill="#4a4038"/><path d="M10 19v2M14 19v2" stroke="#4a4038" stroke-width="1.6"/></svg>',
-    hand: '<svg viewBox="0 0 24 24"><circle cx="12" cy="7" r="4.5" fill="#f6c443" stroke="#9c6a10" stroke-width="1.6"/><path d="M3 15c3 0 5 1 7 2h4c1 0 1 2 0 2H9m-6 2h12l6-5c1-1 0-2.5-1.2-1.8L16 16" fill="none" stroke="#3b444d" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>',
-    speed: '<svg viewBox="0 0 24 24"><path d="M3 5v14l8-7zM12 5v14l8-7z" fill="currentColor"/></svg>',
-    flag: '<svg viewBox="0 0 24 24"><path d="M5 21V3" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/><path d="M5 4h13l-3 4 3 4H5" fill="currentColor"/></svg>',
-    home: '<svg viewBox="0 0 24 24"><path d="M3 11 12 3l9 8M5 9.5V21h5v-6h4v6h5V9.5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"/></svg>',
-    info: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="#4f8fe0" stroke="#1f3f78" stroke-width="1.6"/><path d="M12 10v7" stroke="#fff" stroke-width="2.6" stroke-linecap="round"/><circle cx="12" cy="6.8" r="1.6" fill="#fff"/></svg>',
-    warn: '<svg viewBox="0 0 24 24"><path d="M12 2 1.5 21h21z" fill="#ffcc3a" stroke="#8a5a00" stroke-width="1.6" stroke-linejoin="round"/><path d="M12 9v5" stroke="#4a3000" stroke-width="2.6" stroke-linecap="round"/><circle cx="12" cy="17.3" r="1.5" fill="#4a3000"/></svg>',
-    help: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="#4f8fe0" stroke="#1f3f78" stroke-width="1.6"/><path d="M9.2 9.2a2.9 2.9 0 1 1 3.9 2.7c-.8.4-1.1 1-1.1 1.8v.6" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round"/><circle cx="12" cy="17.6" r="1.4" fill="#fff"/></svg>'
-  };
+  // ---------------------------------------------------------------- icons & small pieces
+  const ICON = CS.Icons.ICON;
   UI.ICON = ICON;
 
   function ic(name, cls) { return '<i class="ic ' + (cls || '') + '">' + ICON[name] + '</i>'; }
 
   function resIcon(r) { return ic(r === 'credits' ? 'credits' : 'energy'); }
+
+  // The player's banner: a blue heater shield with a brass inlay, optionally carrying an emblem.
+  function banner(inner) {
+    return '<svg viewBox="0 0 32 36" aria-hidden="true">' +
+      '<path d="M16 1.6 2.6 5.6v10.6c0 8.2 5.6 14.6 13.4 17.8 7.8-3.2 13.4-9.6 13.4-17.8V5.6z" fill="#2f6fc8" stroke="#0e0905" stroke-width="2.2" stroke-linejoin="round"/>' +
+      '<path d="M16 1.6 2.6 5.6v10.6c0 8.2 5.6 14.6 13.4 17.8z" fill="#fff" fill-opacity=".13"/>' +
+      '<path d="M16 4.9 5.5 8.1v8.1c0 6.6 4.3 11.8 10.5 14.6 6.2-2.8 10.5-8 10.5-14.6V8.1z" fill="none" stroke="#d4a556" stroke-width="1.3"/>' +
+      (inner || '') + '</svg>';
+  }
 
   function costHtml(cost, st) {
     return Eco.RES.filter(function (r) { return cost && cost[r]; }).map(function (r) {
@@ -81,22 +64,48 @@
     return '<div class="bar ' + (cls || '') + '"><div style="width:' + (U.clamp(f, 0, 1) * 100).toFixed(1) + '%"></div></div>';
   }
 
+  function hpClass(f) { return 'hpbar' + (f < 0.34 ? ' low' : f < 0.67 ? ' mid' : ''); }
+
   function ago(t) {
     const s = (CS.Clock.now() - t) / 1000;
     if (s < 60) return 'just now';
     return U.fmtTime(s).split(' ')[0] + ' ago';
   }
 
-  // ---------------------------------------------------------------- toasts & tooltips
-  UI.toast = function (text, kind) {
+  // HUD values refresh several times a second; these skip DOM writes when nothing changed.
+  function setText(id, v) {
+    const el = $(id);
+    v = String(v);
+    if (el.textContent !== v) el.textContent = v;
+  }
+  function setWidth(id, f) {
+    const w = (U.clamp(f || 0, 0, 1) * 100).toFixed(1) + '%';
+    const el = $(id);
+    if (el.style.width !== w) el.style.width = w;
+  }
+  function setHtml(el, html) {
+    if (el._html === html) return false;
+    el._html = html;
+    el.innerHTML = html;
+    return true;
+  }
+
+  // ---------------------------------------------------------------- event cards & tooltips
+  // One card design for every notification: an icon, one line of text and a colored edge
+  // (green good, red bad, brass info). Repeats of the newest card bump it instead of stacking.
+  UI.toast = function (text, kind, icon) {
     const box = $('toasts');
     if (!box) return;
     const last = box.lastElementChild;
-    if (last && last.dataset.text === text) { last.classList.remove('bump'); void last.offsetWidth; last.classList.add('bump'); clearTimeout(last._t); last._t = setTimeout(function () { drop(last); }, 3400); return; }
+    if (last && last.dataset.text === text && !last.classList.contains('out')) {
+      last.classList.remove('bump'); void last.offsetWidth; last.classList.add('bump');
+      clearTimeout(last._t); last._t = setTimeout(function () { drop(last); }, 3400);
+      return;
+    }
     const el = document.createElement('div');
     el.className = 'toast ' + (kind || 'info');
     el.dataset.text = text;
-    el.innerHTML = ic(kind === 'bad' ? 'warn' : kind === 'good' ? 'check' : 'info') + '<span>' + esc(text) + '</span>';
+    el.innerHTML = ic(icon || (kind === 'bad' ? 'warn' : kind === 'good' ? 'check' : 'info')) + '<span>' + esc(text) + '</span>';
     box.appendChild(el);
     while (box.children.length > 4) box.removeChild(box.firstElementChild);
     el._t = setTimeout(function () { drop(el); }, 3400);
@@ -108,9 +117,7 @@
 
   function initTooltips() {
     const tip = $('tip');
-    document.addEventListener('pointerover', function (e) {
-      const el = e.target.closest && e.target.closest('[data-tip]');
-      if (!el || e.pointerType === 'touch') { tip.classList.add('hidden'); return; }
+    function show(el) {
       tip.innerHTML = el.dataset.tip;
       tip.classList.remove('hidden');
       const r = el.getBoundingClientRect();
@@ -119,104 +126,158 @@
       if (y < 4) y = r.bottom + 8;
       tip.style.left = U.clamp(x, 4, window.innerWidth - tw - 4) + 'px';
       tip.style.top = U.clamp(y, 4, window.innerHeight - th - 4) + 'px';
+    }
+    document.addEventListener('pointerover', function (e) {
+      const el = e.target.closest && e.target.closest('[data-tip]');
+      if (!el || e.pointerType === 'touch') { tip.classList.add('hidden'); return; }
+      show(el);
     });
     document.addEventListener('pointerout', function (e) {
       if (e.target.closest && e.target.closest('[data-tip]')) tip.classList.add('hidden');
     });
+    // keyboard users get the same hints on focus
+    document.addEventListener('focusin', function (e) {
+      const el = e.target.closest && e.target.closest('[data-tip]');
+      if (el && el.matches(':focus-visible')) show(el); else tip.classList.add('hidden');
+    });
+    document.addEventListener('focusout', function () { tip.classList.add('hidden'); });
     document.addEventListener('pointerdown', function () { tip.classList.add('hidden'); });
   }
 
   // ---------------------------------------------------------------- top bar
   function topbarHtml() {
-    return '<div class="tb-player" data-act="stats" data-tip="Commander level and renown. Renown rises with victories and successful defenses.">' +
-      '<div class="lvl" id="tbLevel">1</div><div class="tb-pinfo"><div class="tb-name">Commander</div><div class="bar xp"><div id="tbXp"></div></div></div>' +
-      '<div class="tb-renown">' + ic('renown') + '<b id="tbRenown">0</b></div></div>' +
+    return '<button class="hb-player" data-act="stats" data-tip="<b>Commander level</b> rises with experience from building, research and battles. <b>Renown</b> rises with victories and successful defenses.">' +
+      '<span class="crest">' + banner() + '<b id="tbLevel">1</b></span>' +
+      '<span class="hb-pinfo"><span class="hb-name">Commander</span><span class="bar xp"><span id="tbXp"></span></span></span>' +
+      '<span class="hb-renown">' + ic('renown') + '<b id="tbRenown">0</b></span></button>' +
       resBox('credits') + resBox('energy') +
-      '<div class="tb-chip" data-tip="Engineers: each one runs one construction or upgrade at a time.">' + ic('hammer') + '<b id="tbEng">0/0</b></div>' +
-      '<div class="tb-chip" data-act="army" data-tip="Army housing used (troops in training in brackets). Open the Army menu.">' + ic('army') + '<b id="tbArmy">0</b></div>' +
-      '<div class="tb-chip shield hidden" id="tbShield">' + ic('shield') + '<b id="tbShieldT"></b></div>';
+      '<div class="hb-stat" id="tbEngBox" data-tip="Each Engineer runs one construction or upgrade at a time. Engineering Stations bring more.">' + ic('hammer') +
+      '<span class="hb-sv"><b id="tbEng">0/0</b><small>Engineers</small></span></div>' +
+      '<button class="hb-stat" data-act="army" data-tip="Army housing in use, plus troops still in training. Opens Army <kbd>T</kbd>">' + ic('army') +
+      '<span class="hb-sv"><b id="tbArmy">0</b><small id="tbArmyL">Army</small></span></button>' +
+      '<div class="hb-stat shield hidden" id="tbShield">' + ic('shield') + '<span class="hb-sv"><b id="tbShieldT"></b><small id="tbShieldL"></small></span></div>';
   }
 
   function resBox(r) {
-    return '<div class="tb-res ' + r + '" data-tip="' + (r === 'credits' ? 'Credits build and upgrade most structures. Stored in Credit Vaults and the Command Core.' : 'Energy trains troops, funds troop research and builds army buildings. Stored in Energy Cells and the Command Core.') + '">' +
-      resIcon(r) + '<div class="tb-rv"><b id="tb_' + r + '">0</b><div class="bar ' + r + '"><div id="tbBar_' + r + '"></div></div><small id="tbCap_' + r + '"></small></div>' +
-      '<small class="rate" id="tbRate_' + r + '"></small></div>';
+    return '<div class="hb-res ' + r + '" id="tbRes_' + r + '" data-tip="' + (r === 'credits' ? 'Credits build and upgrade most structures. Stored in Credit Vaults and the Command Core.' : 'Energy trains troops, funds troop research and builds army buildings. Stored in Energy Cells and the Command Core.') + '">' +
+      '<i class="ic" id="tbIcon_' + r + '">' + ICON[r] + '</i><div class="hb-rv"><div class="hb-line"><b id="tb_' + r + '">0</b><small id="tbCap_' + r + '"></small><span class="rate" id="tbRate_' + r + '"></span></div>' +
+      '<div class="bar ' + r + '"><div id="tbBar_' + r + '"></div></div></div></div>';
   }
 
   function updateTopbar() {
-    const st = G.state;
-    const p = st.player;
-    $('tbLevel').textContent = p.level;
-    $('tbXp').style.width = (U.clamp(p.xp / C.player.xpForLevel(p.level), 0, 1) * 100).toFixed(1) + '%';
-    $('tbRenown').textContent = U.fmt(p.renown);
+    const st = G.state, p = st.player;
+    setText('tbLevel', p.level);
+    setWidth('tbXp', p.xp / C.player.xpForLevel(p.level));
+    setText('tbRenown', U.fmt(p.renown));
     const cap = Eco.capacity(st), prod = Eco.production(st);
     Eco.RES.forEach(function (r) {
-      $('tb_' + r).textContent = U.fmt(st.res[r]);
-      $('tbBar_' + r).style.width = (cap[r] ? U.clamp(st.res[r] / cap[r], 0, 1) * 100 : 0).toFixed(1) + '%';
-      $('tbCap_' + r).textContent = 'max ' + U.fmt(cap[r]);
-      $('tbRate_' + r).textContent = '+' + U.fmt(prod[r] * 60) + '/h';
+      setText('tb_' + r, U.fmt(st.res[r]));
+      setWidth('tbBar_' + r, cap[r] ? st.res[r] / cap[r] : 0);
+      setText('tbCap_' + r, '/ ' + U.fmt(cap[r]));
+      setText('tbRate_' + r, '+' + U.fmt(prod[r] * 60) + '/h');
+      $('tbRes_' + r).classList.toggle('full', st.res[r] >= cap[r]);
     });
     const eng = Eco.engineers(st);
-    $('tbEng').textContent = eng.free + '/' + eng.total;
+    setText('tbEng', eng.free + '/' + eng.total);
+    $('tbEngBox').classList.toggle('alert', eng.total > 0 && eng.free === 0);
     const q = Army.queueSpace(st);
-    $('tbArmy').textContent = Army.armySpace(st) + (q ? ' (+' + q + ')' : '') + '/' + Army.capacity(st);
+    setText('tbArmy', Army.armySpace(st) + '/' + Army.capacity(st));
+    setText('tbArmyL', q ? 'Army +' + q : 'Army');
     const th = st.threat, t = CS.Clock.now();
+    let label = null, value = '', tip = 'Raiders will not attack while your shield is up.';
+    if (th.protectionUntil > t) { label = 'Protected'; value = U.fmtTime((th.protectionUntil - t) / 1000); tip = 'New settlements are safe from raids for a while.'; }
+    else if (th.shieldUntil > t) { label = 'Shield'; value = U.fmtTime((th.shieldUntil - t) / 1000); }
+    else if (C.attacks.modes[st.settings.raidMode].freq === 0) { label = 'Raids'; value = 'Off'; tip = 'NPC raids are turned off in Settings.'; }
     const shield = $('tbShield');
-    let label = null;
-    if (th.protectionUntil > t) label = 'Protected ' + U.fmtTime((th.protectionUntil - t) / 1000);
-    else if (th.shieldUntil > t) label = 'Shield ' + U.fmtTime((th.shieldUntil - t) / 1000);
-    else if (C.attacks.modes[st.settings.raidMode].freq === 0) label = 'Raids off';
     shield.classList.toggle('hidden', !label);
     if (label) {
-      $('tbShieldT').textContent = label;
-      shield.dataset.tip = label.indexOf('Raids') === 0 ? 'NPC raids are turned off in Settings.' : 'Raiders will not attack while your shield is up.';
+      setText('tbShieldT', value);
+      setText('tbShieldL', label);
+      shield.dataset.tip = tip;
     }
   }
 
-  // ---------------------------------------------------------------- threat banner
+  // Where collected resources fly to (screen pixels), or null while the bar is hidden.
+  UI.resourceAnchor = function (res) {
+    const el = $('tbIcon_' + res);
+    const r = el && el.getBoundingClientRect();
+    return r && r.width ? { x: r.left + r.width / 2, y: r.top + r.height / 2 } : null;
+  };
+
+  UI.bump = function (res) {
+    const el = $('tbRes_' + res);
+    if (!el) return;
+    el.classList.remove('bump'); void el.offsetWidth; el.classList.add('bump');
+  };
+
+  // ---------------------------------------------------------------- incoming raid card
   function updateThreat() {
     const el = $('threat');
     const st = G.state, t = CS.Clock.now();
     const n = st.threat.next;
-    if (G.mode === 'village' && n && n.announced && n.at > t - 1000) {
-      const s = NPC.def(n.attackerId);
-      el.innerHTML = ic('warn') + '<div><b>' + (n.kind === 'retaliation' ? 'Revenge raid!' : 'Raid incoming!') + '</b> ' + esc(NPC.faction(s).name) + ' from ' + esc(s.name) +
-        ' attack in <b>' + U.fmtTime((n.at - t) / 1000) + '</b><small>Upgrade or repair defenses now. Building and moving are locked during the fight.</small></div>';
-      el.className = 'show';
-    } else el.className = '';
+    if (!(G.mode === 'village' && n && n.announced && n.at > t - 1000)) {
+      if (el.className) el.className = '';
+      return;
+    }
+    const s = NPC.def(n.attackerId), fac = NPC.faction(s);
+    const repair = Eco.repairAllCost(st) > 0;
+    setHtml(el, '<span class="tc-crest">' + CS.Icons.crest(s.faction, fac.color) + '</span>' +
+      '<div class="tc-main" data-tip="Upgrade or repair your defenses now. Building and moving are locked while raiders attack.">' +
+      '<span class="lbl">' + (n.kind === 'retaliation' ? 'Revenge raid' : 'Raid incoming') + '</span><b>' + esc(s.name) + '</b><small>' + esc(fac.name) + ' &middot; Tier ' + s.tier + '</small></div>' +
+      '<div class="tc-time"><b id="tcTime"></b><small>until attack</small></div>' +
+      '<div class="tc-act"><button class="sbtn" data-act="prepare">' + ic('shield') + 'Defenses</button>' +
+      (repair ? '<button class="sbtn" data-act="repairAll">' + ic('wrench') + 'Repair</button>' : '') + '</div>');
+    const left = Math.max(0, (n.at - t) / 1000);
+    setText('tcTime', U.clockTime(left));
+    const cls = 'show' + (left < 20 ? ' soon' : '');
+    if (el.className !== cls) el.className = cls;
   }
 
-  // ---------------------------------------------------------------- side & bottom bars
+  ACT.prepare = function () { UI.tab = 'defense'; ACT.build(); };
+
+  // ---------------------------------------------------------------- nav rail & toolbar
+  function navBtn(act, icon, label, key, cls) {
+    return '<button class="nav ' + (cls || '') + '" data-act="' + act + '" data-tip="' + label + ' <kbd>' + key + '</kbd>">' + ic(icon) + '<span>' + label + '</span></button>';
+  }
+
   function sideHtml() {
-    return btn('world', 'sword', 'Attack', 'M', 'big attack') +
-      btn('army', 'army', 'Army', 'T') +
-      btn('research', 'flask', 'Research', 'R') +
-      btn('log', 'scroll', 'Log', 'L') +
-      btn('settings', 'gear', 'Settings', 'Esc');
+    return navBtn('world', 'sword', 'Attack', 'M', 'attack') + navBtn('army', 'army', 'Army', 'T') +
+      navBtn('research', 'flask', 'Research', 'R') + navBtn('log', 'scroll', 'Log', 'L') + navBtn('settings', 'gear', 'Settings', 'Esc');
   }
 
-  function btn(act, icon, label, key, cls) {
-    return '<button class="rbtn ' + (cls || '') + '" data-act="' + act + '" data-tip="' + label + (key ? ' <kbd>' + key + '</kbd>' : '') + '">' + ic(icon) + '<span>' + label + '</span></button>';
+  function toolBtn(act, icon, label, key, extra) {
+    return '<button class="tool" data-act="' + act + '" data-tip="' + label + ' <kbd>' + key + '</kbd>">' + ic(icon) + '<span>' + label + '</span>' + (extra || '') + '</button>';
   }
 
   function bottomHtml() {
-    return btn('build', 'hammer', 'Build', 'B', 'wide') + btn('edit', 'move', 'Edit', 'E', 'wide') +
-      btn('collect', 'hand', 'Collect', 'C', 'wide') + '<span id="repairWrap"></span>';
+    return toolBtn('build', 'hammer', 'Build', 'B') + toolBtn('edit', 'move', 'Edit', 'E') +
+      toolBtn('collect', 'sack', 'Collect', 'C', '<b class="badge" id="tbReady"></b>') + '<span id="repairWrap"></span>';
+  }
+
+  // Lights the rail or toolbar button whose menu or mode is open.
+  function syncNav() {
+    const m = UI.modal === 'help' ? 'settings' : UI.modal;
+    document.querySelectorAll('#side .nav, #bottom .tool').forEach(function (b) {
+      const a = b.dataset.act;
+      const on = a === m || (a === 'edit' && G && G.edit) || (a === 'build' && G && G.place && !G.place.moveId);
+      if (b.classList.contains('on') !== !!on) b.classList.toggle('on', !!on);
+    });
   }
 
   function updateBottom() {
     const st = G.state;
-    const def = G.mode !== 'village';
-    document.querySelectorAll('#bottom [data-act="build"], #bottom [data-act="edit"]').forEach(function (b) { b.disabled = def; });
-    const eb = document.querySelector('#bottom [data-act="edit"]');
-    if (eb) eb.classList.toggle('on', G.edit);
+    const busy = G.mode !== 'village';
+    const build = document.querySelector('#bottom [data-act="build"]'), edit = document.querySelector('#bottom [data-act="edit"]');
+    build.disabled = edit.disabled = busy;
+    setHtml(edit, ic(G.edit ? 'check' : 'move') + '<span>' + (G.edit ? 'Done' : 'Edit') + '</span>');
+    setText('tbReady', st.base.buildings.filter(Eco.ready).length || '');
     const cost = Eco.repairAllCost(st);
-    const wrap = $('repairWrap');
-    const html = cost && !def ? '<button class="rbtn wide warnbtn" data-act="repairAll" data-tip="Repair every damaged building now. Engineering Stations also repair for free over time.">' + ic('wrench') + '<span>Repair ' + U.fmt(cost) + '</span></button>' : '';
-    if (wrap.innerHTML !== html) wrap.innerHTML = html;
+    setHtml($('repairWrap'), cost && !busy ? '<button class="tool repair" data-act="repairAll" data-tip="Repair every damaged building now. Engineering Stations also repair for free over time.">' +
+      ic('wrench') + costHtml({ credits: cost }, st) + '</button>' : '');
+    syncNav();
   }
 
-  // ---------------------------------------------------------------- building panel
+  // ---------------------------------------------------------------- building inspector
   function statRows(b) {
     const st = G.state;
     const def = C.buildings[b.type];
@@ -272,10 +333,11 @@
   }
 
   function panelHtml(b) {
-    const st = G.state, t = CS.Clock.now();
+    const st = G.state;
     const def = C.buildings[b.type];
     const maxHp = Base.maxHp(st, b);
     const hp = Base.hp(st, b);
+    const hpf = maxHp ? hp / maxHp : 0;
     const busy = G.mode !== 'village';
     let status = '';
     if (b.ruined) status = '<div class="status bad">' + ic('skull') + 'Destroyed. Engineering Stations are rebuilding it' + (Eco.repairRate(st) ? '' : ' (build a station to repair)') + '.</div>';
@@ -285,7 +347,7 @@
     let extra = '';
     if (def.produces && b.level >= 1) {
       const L = Base.levelDef(b.type, b.level);
-      extra += '<div class="stored">' + resIcon(def.produces) + '<b>' + U.fmt(b.stored) + '</b> / ' + U.fmt(L.buffer) + ' ready' + staticBar(b.stored / L.buffer, def.produces) + '</div>';
+      extra += '<div class="stored">' + resIcon(def.produces) + '<b>' + U.fmt(b.stored) + '</b><span class="muted">/ ' + U.fmt(L.buffer) + ' ready to collect</span>' + staticBar(b.stored / L.buffer, def.produces) + '</div>';
     }
     if (b.type === 'lab' && st.research.active) {
       const ra = st.research.active;
@@ -301,37 +363,46 @@
     let upHtml = '';
     if (up.maxed) upHtml = '<div class="maxed">Maximum level</div>';
     else if (b.level >= 1) {
-      upHtml = '<button class="mbtn up" data-act="upgrade"' + (up.ok && !busy ? '' : ' disabled') + '>' + ic('up') + '<span>Upgrade to Lv ' + up.next + '</span><span class="sub">' + costHtml(up.cost, st) + (up.time ? ' ' + ic('clock') + U.fmtTime(up.time) : ' instant') + '</span></button>';
+      upHtml = '<button class="mbtn up" data-act="upgrade"' + (up.ok && !busy ? '' : ' disabled') + '><span>Upgrade to Lv ' + up.next + '</span>' +
+        '<span class="sub">' + costHtml(up.cost, st) + '<span class="time">' + ic('clock') + (up.time ? U.fmtTime(up.time) : 'Instant') + '</span></span></button>';
       if (!up.ok && up.reason && b.status === 'active') upHtml += '<div class="req">' + esc(up.reason) + '</div>';
       if (b.type === 'core' && b.status === 'active') {
         const un = coreUnlocks(b.level);
-        if (un.length) upHtml += '<div class="unlocks">Next level: ' + un.map(esc).join(', ') + ', bigger build area.</div>';
+        if (un.length) upHtml += '<div class="unlocks"><b>Next level:</b> ' + un.map(esc).join(', ') + ', bigger build area.</div>';
       }
     }
     const actions = [];
-    if (def.produces && b.stored >= 1) actions.push('<button class="sbtn" data-act="collectOne">' + ic('hand') + 'Collect</button>');
+    if (def.produces && b.stored >= 1) actions.push('<button class="sbtn" data-act="collectOne">' + ic('sack') + 'Collect</button>');
     const rc = Eco.repairCost(st, b);
     if (rc && !busy) actions.push('<button class="sbtn" data-act="repair" data-tip="Repair instantly">' + ic('wrench') + 'Repair ' + costHtml(rc, st) + '</button>');
     if (!busy) actions.push('<button class="sbtn" data-act="move" data-tip="Move this building <kbd>E</kbd>">' + ic('move') + 'Move</button>');
     if (b.type === 'barracks' || b.type === 'garrison') actions.push('<button class="sbtn" data-act="army">' + ic('army') + 'Train</button>');
     if (b.type === 'lab') actions.push('<button class="sbtn" data-act="research">' + ic('flask') + 'Research</button>');
     if (b.timer && !busy) actions.push('<button class="sbtn danger" data-act="cancelTimer">' + ic('close') + 'Cancel</button>');
-    return '<div class="ph">' + thumb(b.type, Math.max(1, b.level), null, 80) +
-      '<div class="pt"><h3>' + esc(def.name) + ' <span class="lv">Lv ' + b.level + '</span></h3>' +
-      '<div class="hp">' + staticBar(maxHp ? hp / maxHp : 0, 'hpbar') + '<small>' + U.fmt(hp) + ' / ' + U.fmt(maxHp) + ' HP</small></div></div>' +
-      '<button class="x" data-act="closePanel" aria-label="Close">' + ICON.close + '</button></div>' +
-      '<p class="desc">' + esc(def.desc) + '</p>' + status + extra + statRows(b) +
-      '<div class="pact">' + upHtml + '<div class="row">' + actions.join('') + '</div></div>';
+    return '<div class="ph">' + thumb(b.type, Math.max(1, b.level), null, 116) +
+      '<div class="pt"><h3>' + esc(def.name) + '</h3><div class="pl"><span>Level <b>' + b.level + '</b> of ' + def.levels.length + '</span></div>' +
+      '<div class="hp">' + staticBar(hpf, hpClass(hpf)) + '<small>' + U.fmt(hp) + ' / ' + U.fmt(maxHp) + ' HP</small></div></div>' +
+      '<button class="x" data-act="closePanel" aria-label="Close" data-tip="Close <kbd>Esc</kbd>">' + ICON.close + '</button></div>' +
+      '<div class="pbody">' + status + extra + '<p class="desc">' + esc(def.desc) + '</p>' + statRows(b) +
+      '<div class="pact">' + upHtml + (actions.length ? '<div class="row">' + actions.join('') + '</div>' : '') + '</div></div>';
   }
 
   function updatePanel(full) {
     const el = $('panel');
     const b = G.sel && G.mode !== 'raid' ? Base.find(G.state, G.sel) : null;
-    if (!b) { el.classList.add('hidden'); el.dataset.key = ''; return; }
+    if (!b) { el.classList.add('hidden'); el.dataset.key = el.dataset.id = ''; return; }
     const key = b.id + ':' + b.level + ':' + b.status + ':' + b.ruined + ':' + Math.floor(b.stored) + ':' + Math.round(b.dmg) + ':' + Math.floor(G.state.res.credits) + ':' + Math.floor(G.state.res.energy) + ':' + G.mode + ':' + !!G.state.research.active + ':' + Eco.engineers(G.state).free;
     if (!full && el.dataset.key === key) return;
     el.dataset.key = key;
+    if (el.dataset.id !== b.id) {
+      // open on the half of the screen the building is not on, so it stays in view
+      const r = Base.rect(b), p = CS.Render.toScreen(r.x + r.w / 2, r.y + r.h / 2);
+      el.dataset.id = b.id;
+      el.dataset.side = p[0] > window.innerWidth / 2 ? 'l' : 'r';
+    }
+    const top = el.scrollTop;
     el.innerHTML = panelHtml(b);
+    el.scrollTop = top;
     el.classList.remove('hidden');
   }
 
@@ -341,40 +412,70 @@
     const p = G.place;
     if (!p) { el.classList.add('hidden'); return; }
     const def = C.buildings[p.type];
+    const moving = p.moveId ? Base.find(G.state, p.moveId) : null;
     const cost = p.moveId ? null : Eco.buildCost(G.state, p.type);
-    const html = '<div class="pb-info"><b>' + (p.moveId ? 'Moving ' : 'Place ') + esc(def.name) + '</b>' +
-      (cost ? ' ' + costHtml(cost, G.state) : '') +
+    setHtml(el, thumb(p.type, moving ? Math.max(1, moving.level) : 1, null, 88) +
+      '<div class="pb-info"><div class="pb-t"><b>' + (p.moveId ? 'Move ' : '') + esc(def.name) + '</b>' + (cost ? costHtml(cost, G.state) : '') + '</div>' +
       '<small class="' + (p.ok ? 'ok' : 'bad') + '">' + (p.ok ? (p.type === 'wall' && !p.moveId ? 'Place one, or drag to lay a line' : 'Pick a spot on the map, then confirm') : esc(p.reason || '')) + '</small></div>' +
-      (def.rotatable ? '<button class="cbtn" data-act="rotate" data-tip="Rotate <kbd>R</kbd>">' + ICON.rotate + '</button>' : '') +
-      '<button class="cbtn ok" data-act="place" data-tip="Place <kbd>Enter</kbd>"' + (p.ok ? '' : ' disabled') + '>' + ICON.check + '</button>' +
-      '<button class="cbtn no" data-act="cancelPlace" data-tip="Cancel <kbd>Esc</kbd>">' + ICON.close + '</button>';
-    if (el.innerHTML !== html) el.innerHTML = html;
+      (def.rotatable ? '<button class="cbtn" data-act="rotate" aria-label="Rotate" data-tip="Rotate <kbd>R</kbd>">' + ICON.rotate + '</button>' : '') +
+      '<button class="cbtn ok" data-act="place" aria-label="Place" data-tip="Place <kbd>Enter</kbd>"' + (p.ok ? '' : ' disabled') + '>' + ICON.check + '</button>' +
+      '<button class="cbtn no" data-act="cancelPlace" aria-label="Cancel" data-tip="Cancel <kbd>Esc</kbd>">' + ICON.close + '</button>');
     el.classList.remove('hidden');
   }
 
+  // ---------------------------------------------------------------- camera insets
+  // Records how much of each screen edge the visible HUD covers, for the camera's framing.
+  function measureInsets() {
+    const I = { t: 0, r: 0, b: 0, l: 0 }, W = window.innerWidth, H = window.innerHeight;
+    document.querySelectorAll('[data-inset]').forEach(function (el) {
+      const r = el.getBoundingClientRect();
+      if (!r.width || !r.height) return;   // hidden
+      const s = el.dataset.inset;
+      if (s === 't') I.t = Math.max(I.t, r.bottom);
+      else if (s === 'b') I.b = Math.max(I.b, H - r.top);
+      else if (s === 'r') I.r = Math.max(I.r, W - r.left);
+      else if (s === 'l') I.l = Math.max(I.l, r.right);
+    });
+    Object.assign(CS.Render.insets, I);
+  }
+  UI.measureInsets = measureInsets;
+
   // ---------------------------------------------------------------- modals
+  // One window at a time. Menus open in the space the village HUD leaves free (style.css
+  // section 5), keep keyboard focus while open and hand it back when they close.
   const MODALS = {};
+  let opener = null;   // what had focus before the window opened
 
   UI.open = function (name, arg) {
     if (G.paused && name !== 'confirm') return;
+    if (!UI.modal) opener = document.activeElement;
     UI.modal = name;
     UI.arg = arg;
-    const m = $('modal');
+    const m = $('modal'), box = m.firstElementChild;
     m.className = 'm-' + name;
+    box.setAttribute('role', 'dialog');
+    box.setAttribute('aria-modal', 'true');
+    box.setAttribute('aria-labelledby', 'mTitle');
+    box.tabIndex = -1;
     renderModal();
     m.scrollTop = 0;
+    box.focus({ preventScroll: true });
     CS.Audio.play('open');
+    syncNav();
     CS.Bus.emit('ui:open', { name: name });
   };
 
   UI.close = function () {
     if (!UI.modal) return;
     const m = $('modal');
-    const was = UI.modal;
+    const was = UI.modal, back = opener;
     UI.modal = null;
+    opener = null;
     m.className = 'hidden';
     m.firstElementChild.innerHTML = '';
     if (UI.onClose) { const f = UI.onClose; UI.onClose = null; f(); }
+    if (!UI.modal && back && back.isConnected) back.focus({ preventScroll: true });
+    syncNav();
     CS.Bus.emit('ui:close', { name: was });
   };
 
@@ -390,193 +491,479 @@
     const box = $('modal').firstElementChild;
     const scroll = box.querySelector('.mbody');
     const top = scroll ? scroll.scrollTop : 0;
+    const a = document.activeElement;
+    const again = a !== box && box.contains(a) ? sameControl(a) : null;
     box.innerHTML = MODALS[UI.modal](UI.arg);
     const nb = box.querySelector('.mbody');
     if (nb) nb.scrollTop = top;
     if (UI.modal === 'world') mountMap();
+    if (again !== null) {
+      const el = again && box.querySelector(again);
+      (el && !el.disabled ? el : box).focus({ preventScroll: true });
+    }
   }
 
-  function head(title, icon, noClose) {
-    return '<div class="mh">' + (icon ? ic(icon) : '') + '<h2>' + title + '</h2>' + (noClose ? '' : '<button class="x" data-act="close" aria-label="Close">' + ICON.close + '</button>') + '</div>';
+  // The same control in the redrawn window, so keyboard focus survives the refreshes that game
+  // events trigger.
+  function sameControl(el) {
+    if (!el.dataset.act && !el.dataset.range) return '';
+    let s = el.tagName;
+    Object.keys(el.dataset).forEach(function (k) {
+      if (k !== 'tip') s += '[data-' + k.replace(/[A-Z]/g, '-$&').toLowerCase() + '="' + CSS.escape(el.dataset[k]) + '"]';
+    });
+    return s;
+  }
+
+  // Tab and Shift+Tab cycle through the open window instead of the HUD behind it.
+  document.addEventListener('keydown', function (e) {
+    if (!UI.modal) return;
+    const box = $('modal').firstElementChild, a = document.activeElement;
+    // Enter on a focused button presses that button; otherwise the game's Enter shortcut (which
+    // answers Yes in a confirmation) would also fire on Cancel.
+    if (e.key === 'Enter' && a.tagName === 'BUTTON' && box.contains(a)) { e.stopPropagation(); return; }
+    if (e.key !== 'Tab') return;
+    const list = Array.prototype.filter.call(box.querySelectorAll('button, input'), function (el) { return !el.disabled && el.offsetParent; });
+    if (!list.length) return;
+    const first = list[0], last = list[list.length - 1];
+    const out = a === box || !box.contains(a);
+    if (e.shiftKey ? out || a === first : out || a === last) {
+      e.preventDefault();
+      (e.shiftKey ? last : first).focus();
+    }
+  });
+
+  function head(title, icon, noClose, aside) {
+    return '<div class="mh">' + (icon ? ic(icon) : '') + '<h2 id="mTitle">' + title + '</h2>' + (aside || '') +
+      (noClose ? '' : '<button class="x" data-act="close" aria-label="Close" data-tip="Close <kbd>Esc</kbd>">' + ICON.close + '</button>') + '</div>';
+  }
+
+  // A readout in a window's title bar, such as the free Engineers in the Build menu.
+  function hstat(icon, value, label, cls, tip) {
+    return '<span class="hstat ' + (cls || '') + '"' + (tip ? ' data-tip="' + tip + '"' : '') + '>' + ic(icon) + '<b>' + value + '</b><small>' + label + '</small></span>';
+  }
+
+  // Why something cannot be done now. kind: 'lock' (and what unlocks it), 'short' of a resource, 'busy'.
+  function why(text, kind, icon) {
+    return '<span class="why ' + kind + '">' + ic(icon) + '<span>' + esc(text) + '</span></span>';
+  }
+
+  function notice(icon, html, cls) {
+    return '<div class="notice' + (cls ? ' ' + cls : '') + '">' + ic(icon) + '<div>' + html + '</div></div>';
   }
 
   // ----- build menu
+  function buildCard(st, type) {
+    const def = C.buildings[type];
+    const chk = Eco.canBuild(st, type);
+    let state = 'ok', note = '';
+    if (chk.locked) { state = 'locked'; note = why(chk.reason, 'lock', 'lock'); }
+    else if (chk.maxed) { state = 'maxed'; note = why(chk.reason, 'lock', 'core'); }
+    else if (chk.short) { state = 'short'; note = why(chk.reason, 'short', 'warn'); }
+    else if (!chk.ok) { state = 'busy'; note = why(chk.reason, 'busy', 'hammer'); }
+    const time = Eco.isInstant(type, 1) ? 'Instant' : U.fmtTime(def.levels[0].time);
+    // unavailable cards stay clickable: the click explains why in an event card
+    return '<button class="bcard ' + state + '" data-act="buildType" data-type="' + type + '"' + (chk.ok ? '' : ' aria-disabled="true"') + ' data-tip="' + esc(def.desc) + '">' +
+      '<span class="bc-art">' + thumb(type, 1, null, 96) + '</span>' +
+      '<span class="bc-count">' + (chk.locked ? ic('lock') : '<b>' + chk.count + '</b>/' + chk.max) + '</span>' +
+      '<span class="bc-name">' + esc(def.name) + '</span>' +
+      '<span class="bc-meta">' + costHtml(chk.cost, st) + '<span class="time">' + ic('clock') + time + '</span></span>' + note + '</button>';
+  }
+
   MODALS.build = function () {
     const st = G.state;
-    const tabs = C.buildMenu.map(function (t) {
-      return '<button class="tab' + (UI.tab === t.id ? ' on' : '') + '" data-act="tab" data-tab="' + t.id + '">' + t.name + '</button>';
-    }).join('');
-    const tab = C.buildMenu.find(function (t) { return t.id === UI.tab; }) || C.buildMenu[0];
     const eng = Eco.engineers(st);
-    const cards = tab.items.map(function (type) {
-      const def = C.buildings[type];
-      const chk = Eco.canBuild(st, type);
-      const time = Eco.isInstant(type, 1) ? 'Instant' : U.fmtTime(def.levels[0].time);
-      let note = '';
-      if (chk.locked) note = '<div class="lock">' + ic('lock') + esc(chk.reason) + '</div>';
-      else if (chk.maxed) note = '<div class="lock">Built ' + chk.count + '/' + chk.max + '. Upgrade the Command Core for more.</div>';
-      else if (!chk.ok) note = '<div class="short">' + esc(chk.reason) + '</div>';
-      return '<button class="card' + (chk.ok ? '' : ' dis') + (chk.locked ? ' locked' : '') + '" data-act="buildType" data-type="' + type + '" data-tip="' + esc(def.desc) + '">' +
-        thumb(type, 1, null, 96) + '<div class="cn">' + esc(def.name) + '</div>' +
-        '<div class="cc">' + (chk.locked ? '' : chk.count + '/' + chk.max) + '</div>' +
-        '<div class="cp">' + costHtml(chk.cost, st) + ' <span class="time">' + ic('clock') + time + '</span></div>' + note + '</button>';
+    const tab = C.buildMenu.find(function (t) { return t.id === UI.tab; }) || C.buildMenu[0];
+    const tabs = C.buildMenu.map(function (t) {
+      return '<button class="tab' + (t === tab ? ' on' : '') + '" role="tab" aria-selected="' + (t === tab) + '" data-act="tab" data-tab="' + t.id + '">' + t.name + '</button>';
     }).join('');
-    return head('Build', 'hammer') + '<div class="tabs">' + tabs + '</div>' +
-      '<div class="mbody"><p class="hint">Engineers free: <b>' + eng.free + '/' + eng.total + '</b>. Walls, mines and new Engineering Stations finish instantly.</p><div class="cards">' + cards + '</div></div>';
+    return head('Build', 'hammer', false, hstat('hammer', eng.free + '/' + eng.total, 'Engineers free', eng.free ? '' : 'warn',
+      'Each Engineer runs one construction or upgrade at a time. Engineering Stations bring more.')) +
+      '<div class="tabs" role="tablist">' + tabs + '</div>' +
+      '<div class="mbody"><div class="bcards">' + tab.items.map(function (type) { return buildCard(st, type); }).join('') + '</div>' +
+      '<p class="hint mfoot">Walls, mines and new Engineering Stations finish instantly and need no free Engineer.</p></div>';
   };
 
   // ----- army
+  function troopCard(st, type) {
+    const T = C.troops[type];
+    const s = Army.stats(st, type);
+    const unlocked = Army.isUnlocked(st, type);
+    const heals = T.target === 'troop';
+    const tip = esc(T.desc) + '<br>HP ' + s.hp + ' &middot; ' + (heals ? 'Heals ' + s.dmg + '/s' : 'DMG ' + s.dmg + (T.suicide ? ' (x' + T.wallMult + ' vs walls)' : '')) + ' &middot; Range ' + T.range + ' &middot; Speed ' + T.speed;
+    let act;
+    if (!unlocked) act = why('Unlocks at Barracks Lv ' + Army.unlockLevel(type), 'lock', 'lock');
+    else {
+      const c1 = Army.canQueue(st, type, 1), c5 = Army.canQueue(st, type, 5);
+      const btn = function (n, c) {
+        return '<button class="sbtn" data-act="train" data-type="' + type + '" data-n="' + n + '" aria-label="Train ' + n + ' ' + esc(T.name) + '"' + (c.ok ? '' : ' disabled') + '>+' + n + '</button>';
+      };
+      act = '<span class="tk-train">' + btn(1, c1) + btn(5, c5) + '</span>' +
+        (!c1.ok ? why(c1.reason, c1.short ? 'short' : 'busy', c1.short ? 'warn' : 'army') : !c5.ok ? why('+5: ' + c5.reason, c5.short ? 'short' : 'busy', c5.short ? 'warn' : 'army') : '');
+    }
+    return '<div class="tcard' + (unlocked ? '' : ' locked') + '" data-tip="' + tip + '">' +
+      '<span class="tk-art">' + troopImg(type, null, 72) + '</span>' +
+      '<div class="tk-main"><div class="tk-head"><b class="tk-name">' + esc(T.name) + '</b><span class="lv">Lv ' + Army.level(st, type) + '</span></div>' +
+      '<div class="tk-meta">' + costHtml({ energy: s.cost }, unlocked ? st : null) + '<span class="space">' + ic('army') + T.space + '</span><span class="time">' + ic('clock') + U.fmtTime(Army.trainSeconds(st, type)) + '</span></div>' +
+      '<div class="tk-stats"><span>HP <b>' + s.hp + '</b></span><span>' + (heals ? 'Heal' : 'DMG') + ' <b>' + s.dmg + '</b></span><span>' + (T.range < 1 ? 'Melee' : 'Range <b>' + T.range + '</b>') + '</span></div>' +
+      act + '</div></div>';
+  }
+
   MODALS.army = function () {
     const st = G.state;
     const cap = Army.capacity(st), used = Army.armySpace(st), q = Army.queueSpace(st);
     const barracks = Army.activeBarracks(st);
-    const cards = C.troopOrder.map(function (type) {
-      const T = C.troops[type];
-      const s = Army.stats(st, type);
-      const unlocked = Army.isUnlocked(st, type);
-      const chk1 = Army.canQueue(st, type, 1), chk5 = Army.canQueue(st, type, 5);
-      const tip = esc(T.desc) + '<br>HP ' + s.hp + ' &middot; ' + (T.target === 'troop' ? 'Heals ' + s.dmg + '/s' : 'DMG ' + s.dmg + (T.suicide ? ' (x' + T.wallMult + ' vs walls)' : '')) + ' &middot; Range ' + T.range + ' &middot; Speed ' + T.speed;
-      return '<div class="tcard' + (unlocked ? '' : ' locked') + '" data-tip="' + tip + '">' + troopImg(type, null, 72) +
-        '<div class="tn">' + esc(T.name) + ' <span class="lv">Lv ' + Army.level(st, type) + '</span></div>' +
-        '<div class="tm">' + resIcon('energy') + U.fmt(s.cost) + ' &middot; ' + ic('army') + T.space + ' &middot; ' + U.fmtTime(Army.trainSeconds(st, type)) + '</div>' +
-        (unlocked ? '<div class="row"><button class="sbtn" data-act="train" data-type="' + type + '" data-n="1"' + (chk1.ok ? '' : ' disabled') + '>+1</button><button class="sbtn" data-act="train" data-type="' + type + '" data-n="5"' + (chk5.ok ? '' : ' disabled') + '>+5</button></div>' +
-          (chk1.ok ? '' : '<div class="short">' + esc(chk1.reason) + '</div>')
-          : '<div class="lock">' + ic('lock') + 'Barracks Lv ' + Army.unlockLevel(type) + '</div>') + '</div>';
+    const w = function (v) { return (U.clamp(v / Math.max(1, cap), 0, 1) * 100).toFixed(1) + '%'; };
+    const summary = '<div class="asum"><div class="asum-h">' + ic('army') + '<span class="lbl">Army housing</span>' +
+      (q ? '<small>+' + q + ' in training</small>' : '') + '<b>' + used + ' / ' + cap + '</b></div>' +
+      '<div class="bar army hbar"><div style="width:' + w(used) + '"></div><div class="q" style="width:' + w(Math.min(q, cap - used)) + '"></div></div>' +
+      (barracks ? '<p class="hint">' + barracks + ' working Barracks' + (barracks > 1 ? ' train ' + barracks + 'x faster.' : '.') + ' Training continues while the game is closed.</p>'
+        : why('You need a working Barracks to train troops.', 'busy', 'warn')) + '</div>';
+    const chips = C.troopOrder.filter(function (t) { return st.army.units[t] > 0; }).map(function (t) {
+      return '<span class="chipT" data-tip="' + esc(C.troops[t].name) + '">' + troopImg(t, null, 44) + '<b>' + st.army.units[t] + '</b></span>';
     }).join('');
-    const have = C.troopOrder.filter(function (t) { return st.army.units[t] > 0; }).map(function (t) {
-      return '<div class="chipT">' + troopImg(t, null, 44) + '<b>' + st.army.units[t] + '</b></div>';
-    }).join('') || '<p class="hint">No troops yet. Train some to raid enemy settlements.</p>';
-    let queue = '';
+    let queue = '<p class="hint">Nothing in training.</p>', total = '';
     if (st.army.queue.length) {
-      const head0 = st.army.queue[0];
-      const need = Army.trainSeconds(st, head0.type) / Math.max(1, barracks);
-      const left = Math.max(0, (Army.trainSeconds(st, head0.type) - st.army.progress) / Math.max(1, barracks));
-      const now = CS.Clock.now();
+      const now = CS.Clock.now(), per = Math.max(1, barracks);
+      const need = Army.trainSeconds(st, st.army.queue[0].type) / per;
+      const left = Math.max(0, (Army.trainSeconds(st, st.army.queue[0].type) - st.army.progress) / per);
       queue = st.army.queue.map(function (e, i) {
-        return '<div class="qitem">' + troopImg(e.type, null, 40) + '<b>&times;' + e.count + '</b>' +
-          (i === 0 ? (barracks ? bar(now - (need - left) * 1000, now + left * 1000, 'q') : '<small class="bad">No working Barracks</small>') : '') +
-          '<button class="xs" data-act="untrain" data-i="' + i + '" data-tip="Remove one (full refund)">' + ICON.close + '</button></div>';
-      }).join('') + '<p class="hint">All training done in ' + until(now + Army.queueRemaining(st) * 1000) + '</p>';
-    } else queue = '<p class="hint">Nothing in training.</p>';
-    return head('Army', 'army') + '<div class="mbody army">' +
-      '<div class="capline">' + ic('army') + 'Housing <b>' + used + (q ? ' + ' + q : '') + ' / ' + cap + '</b>' + staticBar((used + q) / Math.max(1, cap), 'army') + '</div>' +
-      '<p class="hint">' + (barracks ? barracks + ' working Barracks' + (barracks > 1 ? ' train ' + barracks + 'x faster.' : '.') + ' Training continues while the game is closed.' : 'You need a working Barracks to train troops.') + '</p>' +
-      '<div class="tcards">' + cards + '</div>' +
-      '<div class="cols"><div><h4>Your army</h4><div class="chips">' + have + '</div></div><div><h4>Training</h4>' + queue + '</div></div></div>';
+        const name = esc(C.troops[e.type].name);
+        let prog = '';
+        if (i === 0) prog = barracks ? '<span class="qnext">Next in ' + until(now + left * 1000) + '</span>' + bar(now - (need - left) * 1000, now + left * 1000, 'q') : why('No working Barracks', 'busy', 'warn');
+        return '<div class="qrow">' + troopImg(e.type, null, 40) + '<div class="qmain"><span class="qname"><b>' + e.count + '&times;</b> ' + name + '</span>' + prog + '</div>' +
+          '<button class="xs" data-act="untrain" data-i="' + i + '" aria-label="Remove one ' + name + '" data-tip="Remove one (full refund)">' + ICON.close + '</button></div>';
+      }).join('');
+      total = barracks ? '<span class="h4side">All done in <b>' + until(now + Army.queueRemaining(st) * 1000) + '</b></span>' : '<span class="h4side">Paused until a Barracks is working</span>';
+    }
+    return head('Army', 'army') + '<div class="mbody">' + summary +
+      '<h4>Train troops</h4><div class="tcards">' + C.troopOrder.map(function (t) { return troopCard(st, t); }).join('') + '</div>' +
+      '<div class="acols"><section><div class="h4row"><h4>Your army</h4><span class="h4side"><b>' + Army.totalUnits(st) + '</b> troops</span></div>' +
+      (chips ? '<div class="chips">' + chips + '</div>' : '<p class="hint">No troops yet. Train some to raid enemy settlements.</p>') + '</section>' +
+      '<section><div class="h4row"><h4>Training</h4>' + total + '</div>' + queue + '</section></div></div>';
   };
 
   // ----- research
+  const TECH_ICON = { plating: 'shield', targeting: 'target', extraction: 'pick', compression: 'crate', drills: 'bolt' };
+
+  function gain(v) { return v == null ? '' : ' <span class="gain">&rarr; ' + v + '</span>'; }
+
+  function researchArt(key) {
+    return '<span class="r-art">' + (C.troops[key] ? troopImg(key, null, 48) : ic(TECH_ICON[key] || 'flask')) + '</span>';
+  }
+
+  function researchRow(st, d) {
+    const chk = CS.Research.canStart(st, d.key);
+    let effect;
+    if (d.kind === 'troop') {
+      const a = Army.stats(st, d.key, d.level), b = d.maxed ? null : Army.stats(st, d.key, d.level + 1);
+      effect = 'HP ' + a.hp + gain(b && b.hp) + ' &middot; ' + (C.troops[d.key].target === 'troop' ? 'Heal ' : 'DMG ') + a.dmg + gain(b && b.dmg);
+    } else {
+      const per = C.research.techs[d.key].per;
+      effect = esc(d.desc) + ' +' + Math.round(d.level * per * 100) + '%' + gain(d.maxed ? null : '+' + Math.round((d.level + 1) * per * 100) + '%');
+    }
+    let side;
+    if (d.maxed) side = '<span class="rmax">' + ic('star') + 'Max level</span>';
+    else {
+      const cost = {}; cost[d.res] = d.cost;
+      side = '<span class="rcost">' + costHtml(cost, st) + '<span class="time">' + ic('clock') + U.fmtTime(d.time) + '</span></span>' +
+        '<button class="sbtn" data-act="doResearch" data-key="' + d.key + '"' + (chk.ok ? '' : ' disabled') + ' aria-label="Research ' + esc(d.name) + ' level ' + (d.level + 1) + '" data-tip="' + esc(chk.ok ? 'Start research' : chk.reason) + '">' + ic('up') + 'Lv ' + (d.level + 1) + '</button>';
+    }
+    const note = d.locked ? why(d.locked, 'lock', 'lock') : chk.short ? why(chk.reason, 'short', 'warn') : '';
+    return '<div class="rrow' + (d.locked ? ' locked' : '') + (d.maxed ? ' done' : '') + '">' + researchArt(d.key) +
+      '<div class="r-main"><div class="r-head"><b class="r-name">' + esc(d.name) + '</b><span class="lv">Lv ' + d.level + '/' + d.max + '</span></div>' +
+      '<span class="r-eff">' + effect + '</span>' + note + '</div><div class="r-side">' + side + '</div></div>';
+  }
+
   MODALS.research = function () {
     const st = G.state;
     const lab = CS.Research.lab(st);
     const ra = st.research.active;
-    let top = '';
-    if (!lab) top = '<div class="notice">' + ic('info') + 'Build a Research Lab to unlock research' + (Base.unlockCore('lab') > Base.coreLevel(st) ? ' (available at Command Core Lv ' + Base.unlockCore('lab') + ')' : ' from the Build menu') + '.</div>';
+    let top;
     if (ra) {
       const d = CS.Research.describe(st, ra.key);
-      top += '<div class="active-r">' + ic('flask') + '<div><b>' + esc(d.name) + ' Lv ' + (d.level + 1) + '</b> ' + until(ra.end) + bar(ra.start, ra.end) + '</div><button class="sbtn danger" data-act="cancelResearch">Cancel</button></div>';
-    }
-    function rowHtml(d) {
-      let effect = '';
-      if (d.kind === 'troop') {
-        const a = Army.stats(st, d.key, d.level), b = d.maxed ? null : Army.stats(st, d.key, d.level + 1);
-        effect = 'HP ' + a.hp + (b ? ' &rarr; ' + b.hp : '') + ', ' + (C.troops[d.key].target === 'troop' ? 'heal ' : 'DMG ') + a.dmg + (b ? ' &rarr; ' + b.dmg : '');
-      } else {
-        const per = C.research.techs[d.key].per;
-        effect = esc(d.desc) + ' +' + Math.round(d.level * per * 100) + '%' + (d.maxed ? '' : ' &rarr; +' + Math.round((d.level + 1) * per * 100) + '%');
-      }
-      const chk = CS.Research.canStart(st, d.key);
-      const cost = {}; if (d.cost) cost[d.res] = d.cost;
-      return '<div class="rrow' + (d.locked ? ' locked' : '') + '">' + (d.kind === 'troop' ? troopImg(d.key, null, 48) : '<span class="techic">' + ICON.flask + '</span>') +
-        '<div class="rinfo"><b>' + esc(d.name) + '</b> <span class="lv">Lv ' + d.level + '/' + d.max + '</span><small>' + effect + '</small></div>' +
-        (d.maxed ? '<div class="maxed">Max</div>' : '<div class="ract"><button class="sbtn" data-act="doResearch" data-key="' + d.key + '"' + (chk.ok ? '' : ' disabled') + ' data-tip="' + esc(chk.ok ? 'Start research' : chk.reason) + '">' + costHtml(cost, st) + ' ' + ic('clock') + U.fmtTime(d.time) + '</button>' + (d.locked ? '<small class="bad">' + esc(d.locked) + '</small>' : '') + '</div>') + '</div>';
-    }
+      top = '<div class="ractive">' + researchArt(ra.key) + '<div class="ra-main"><span class="lbl">Researching</span>' +
+        '<span class="r-head"><b class="r-name">' + esc(d.name) + '</b><span class="lv">Lv ' + (d.level + 1) + '</span></span>' + bar(ra.start, ra.end, 'q') + '</div>' +
+        '<div class="ra-side"><span class="time">' + ic('clock') + until(ra.end) + '</span>' +
+        '<button class="sbtn danger" data-act="cancelResearch" data-tip="Stop and get half of the cost back">' + ic('close') + 'Cancel</button></div></div>';
+    } else if (!lab) top = notice('info', 'Build a Research Lab to unlock research' + (Base.unlockCore('lab') > Base.coreLevel(st) ? ' (available at Command Core Lv ' + Base.unlockCore('lab') + ')' : ' from the Build menu') + '.');
+    else if (!Base.isFunctional(lab)) top = notice('warn', (lab.ruined ? 'The Research Lab is in ruins.' : 'The Research Lab is being upgraded.') + ' New research can start once it is working again.', 'warn');
+    else top = '<div class="ractive idle">' + ic('flask') + '<span>The lab is free. Pick an upgrade below.</span></div>';
     const list = CS.Research.list(st);
-    return head('Research Lab', 'flask') + '<div class="mbody">' + top +
-      '<h4>Troop training</h4>' + list.filter(function (d) { return d.kind === 'troop'; }).map(rowHtml).join('') +
-      '<h4>Settlement technology</h4>' + list.filter(function (d) { return d.kind === 'tech'; }).map(rowHtml).join('') + '</div>';
+    const rows = function (kind) { return list.filter(function (d) { return d.kind === kind; }).map(function (d) { return researchRow(st, d); }).join(''); };
+    return head('Research Lab', 'flask', false, lab ? hstat('flask', 'Lv ' + lab.level, 'Research Lab', '', 'A higher lab level unlocks higher research levels.') : '') +
+      '<div class="mbody">' + top + '<h4>Troop training</h4>' + rows('troop') + '<h4>Settlement technology</h4>' + rows('tech') + '</div>';
   };
 
   // ----- world map
-  let mapCanvas = null;
+  // The map is painted in code once per shape and per revealed tier, then reused: the ground
+  // palettes of the battlefields, ink borders between territories, landmarks, roads, and
+  // hatched fog over the tiers the player has not reached yet.
   const HOME_POS = [0.5, 0.93];
-  const BIOME_COL = { meadow: [124, 186, 74], desert: [226, 192, 120], swamp: [108, 136, 70], snow: [228, 238, 246], volcanic: [104, 76, 66] };
+  const MAP_INK = '#2b1e12';
+  const maps = {};
 
-  function drawMap() {
-    const W = 600, H = 440, R = 3;
-    const c = document.createElement('canvas');
-    c.width = W; c.height = H;
-    const g = c.getContext('2d');
-    const lw = W / R, lh = H / R;
-    const img = g.createImageData(lw, lh);
-    const pts = C.settlements.map(function (s) { return { x: s.pos[0], y: s.pos[1], col: BIOME_COL[C.factions[s.faction].biome] }; });
-    pts.push({ x: HOME_POS[0], y: HOME_POS[1], col: [142, 204, 92] });
-    for (let y = 0; y < lh; y++) {
-      for (let x = 0; x < lw; x++) {
-        const fx = x / lw + Math.sin(y * 0.21) * 0.012 + Math.sin(x * 0.13 + y * 0.07) * 0.01;
-        const fy = y / lh + Math.cos(x * 0.17) * 0.012;
-        let best = null, bd = Infinity, second = Infinity;
-        pts.forEach(function (p) {
-          const d = (p.x - fx) * (p.x - fx) * 1.4 + (p.y - fy) * (p.y - fy);
-          if (d < bd) { second = bd; bd = d; best = p; } else if (d < second) second = d;
-        });
-        const edge = Math.sqrt(second) - Math.sqrt(bd) < 0.012;
-        const n = (Math.sin(x * 0.9) * Math.cos(y * 1.1) + Math.sin((x + y) * 0.37)) * 6;
-        const i = (y * lw + x) * 4;
-        const k = edge ? 0.82 : 1;
-        img.data[i] = best.col[0] * k + n; img.data[i + 1] = best.col[1] * k + n; img.data[i + 2] = best.col[2] * k + n; img.data[i + 3] = 255;
+  function hexRgb(h) { const n = parseInt(h.slice(1), 16); return [n >> 16, n >> 8 & 255, n & 255]; }
+
+  // Smooth value noise on a wrapping n x n lattice.
+  function valueNoise(seed, n) {
+    const rng = new U.Rng(seed), v = new Float32Array(n * n);
+    for (let i = 0; i < v.length; i++) v[i] = rng.next();
+    return function (x, y) {
+      const xi = Math.floor(x), yi = Math.floor(y);
+      let fx = x - xi, fy = y - yi;
+      fx = fx * fx * (3 - 2 * fx); fy = fy * fy * (3 - 2 * fy);
+      const x0 = (xi % n + n) % n, y0 = (yi % n + n) % n, x1 = (x0 + 1) % n, y1 = (y0 + 1) % n;
+      const a = v[y0 * n + x0], b = v[y0 * n + x1], c = v[y1 * n + x0], d = v[y1 * n + x1];
+      return a + (b - a) * fx + (c - a) * fy + (a - b - c + d) * fx * fy;
+    };
+  }
+
+  // Roads: each settlement links to the nearest one of the tier before it (tier 1 to home).
+  function mapRoads(aspect, maxTier) {
+    return C.settlements.map(function (s) {
+      const prev = s.tier === 1 ? [{ pos: HOME_POS }] : C.settlements.filter(function (o) { return o.tier === s.tier - 1; });
+      let from = prev[0], best = Infinity;
+      prev.forEach(function (o) { const d = U.dist(o.pos[0], o.pos[1], s.pos[0], s.pos[1]); if (d < best) { best = d; from = o; } });
+      const ax = from.pos[0] * aspect, ay = from.pos[1], bx = s.pos[0] * aspect, by = s.pos[1];
+      const bend = U.hash(s.id) & 1 ? 0.14 : -0.14;
+      const cx = (ax + bx) / 2 - (by - ay) * bend, cy = (ay + by) / 2 + (bx - ax) * bend;
+      const pts = [];
+      for (let i = 0; i <= 16; i++) {
+        const t = i / 16, k = 1 - t;
+        pts.push([k * k * ax + 2 * k * t * cx + t * t * bx, k * k * ay + 2 * k * t * cy + t * t * by]);
+      }
+      return { ax: ax, ay: ay, cx: cx, cy: cy, bx: bx, by: by, pts: pts, fog: s.tier > maxTier };
+    });
+  }
+
+  function drawMap(aspect, maxTier) {
+    const H = 760, W = Math.round(H * aspect);
+    const cv = document.createElement('canvas');
+    cv.width = W; cv.height = H;
+    const g = cv.getContext('2d');
+    const BIO = CS.Render.BIOMES;
+    // one territory per settlement plus the player's home; coordinates in map heights
+    const sites = C.settlements.map(function (s) { return { x: s.pos[0] * aspect, y: s.pos[1], biome: C.factions[s.faction].biome, fog: s.tier > maxTier }; });
+    sites.push({ x: HOME_POS[0] * aspect, y: HOME_POS[1], biome: 'home', fog: false });
+    const n = sites.length;
+    const sx = new Float64Array(n), sy = new Float64Array(n), span = new Float64Array(n * n);
+    sites.forEach(function (p, i) { sx[i] = p.x; sy[i] = p.y; });
+    for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) span[i * n + j] = 2 * Math.hypot(sx[i] - sx[j], sy[i] - sy[j]);
+    const pal = sites.map(function (p) { const b = BIO[p.biome]; return [hexRgb(b.wild), hexRgb(b.lush), hexRgb(b.dry), hexRgb(b.bg)]; });
+    const nz = valueNoise(7, 64);
+    const WARP = 0.05;
+    function nearest(u, v) {
+      const wu = u + (nz(u * 7, v * 7) - 0.5) * WARP, wv = v + (nz(u * 7 + 23, v * 7 + 41) - 0.5) * WARP;
+      let d1 = 1e9, a = 0;
+      for (let k = 0; k < n; k++) { const dx = sx[k] - wu, dy = sy[k] - wv, dd = dx * dx + dy * dy; if (dd < d1) { d1 = dd; a = k; } }
+      return a;
+    }
+
+    // ---- ground, territory borders and fog, pixel by pixel
+    const img = g.createImageData(W, H), px = img.data;
+    for (let y = 0; y < H; y++) {
+      const v = y / H;
+      for (let x = 0; x < W; x++) {
+        const u = x / H;
+        const wu = u + (nz(u * 7, v * 7) - 0.5) * WARP, wv = v + (nz(u * 7 + 23, v * 7 + 41) - 0.5) * WARP;
+        let d1 = 1e9, d2 = 1e9, a = 0, b = 0;
+        for (let k = 0; k < n; k++) {
+          const dx = sx[k] - wu, dy = sy[k] - wv, dd = dx * dx + dy * dy;
+          if (dd < d1) { d2 = d1; b = a; d1 = dd; a = k; } else if (dd < d2) { d2 = dd; b = k; }
+        }
+        const e = (d2 - d1) / span[a * n + b];   // distance to the border with the next territory
+        const P = pal[a], other = sites[a].biome !== sites[b].biome;
+        // large lush and dry patches, as on the battlefields
+        const m = nz(u * 3 + 11, v * 3 + 5);
+        const to = m < 0.42 ? P[1] : P[2];
+        let t = m < 0.42 ? Math.min(1, (0.42 - m) * 3.2) : m > 0.6 ? Math.min(1, (m - 0.6) * 3.2) : 0;
+        t *= 0.8;
+        let r = P[0][0] + (to[0] - P[0][0]) * t, gr = P[0][1] + (to[1] - P[0][1]) * t, bl = P[0][2] + (to[2] - P[0][2]) * t;
+        // painterly mottling and a little paper grain
+        const f = (nz(u * 40 + 3, v * 40 + 7) - 0.5) * 14 + ((x * 7919 ^ y * 104729) & 7) - 3.5;
+        r += f; gr += f; bl += f;
+        // a darker wash along the border, then the ink line itself (dotted inside one biome)
+        const band = other ? 0.03 : 0.016;
+        if (e < band) {
+          t = 1 - e / band; t = t * t * (other ? 0.42 : 0.22);
+          r += (P[3][0] - r) * t; gr += (P[3][1] - gr) * t; bl += (P[3][2] - bl) * t;
+        }
+        t = ((other ? 0.0021 : 0.0013) - e) * H + 0.5;
+        if (t > 0 && (other || (x + y) >> 2 & 1)) {
+          t = Math.min(1, t) * (other ? 0.82 : 0.5);
+          r += (43 - r) * t; gr += (30 - gr) * t; bl += (18 - bl) * t;
+        }
+        // unexplored tiers: faded toward parchment and hatched
+        if (sites[a].fog) {
+          const l = r * 0.3 + gr * 0.55 + bl * 0.15;
+          r = l * 0.5 + 84; gr = l * 0.5 + 76; bl = l * 0.5 + 60;
+          if (((x - y) % 10 + 10) % 10 < 1.5) { r *= 0.84; gr *= 0.84; bl *= 0.84; }
+        }
+        // the sheet darkens slightly toward its edges
+        const ed = Math.min(u, aspect - u, v, 1 - v);
+        if (ed < 0.05) { t = 1 - ed / 0.05; t = t * t * 0.38; r -= r * t; gr -= gr * t; bl -= bl * t; }
+        const i = (y * W + x) * 4;
+        px[i] = r; px[i + 1] = gr; px[i + 2] = bl; px[i + 3] = 255;
       }
     }
-    const tmp = document.createElement('canvas');
-    tmp.width = lw; tmp.height = lh;
-    tmp.getContext('2d').putImageData(img, 0, 0);
-    g.imageSmoothingEnabled = true;
-    g.drawImage(tmp, 0, 0, W, H);
-    // sea border and vignette
-    const v = g.createRadialGradient(W / 2, H / 2, H * 0.35, W / 2, H / 2, H * 0.8);
-    v.addColorStop(0, 'rgba(0,0,0,0)'); v.addColorStop(1, 'rgba(10,30,60,0.55)');
-    g.fillStyle = v; g.fillRect(0, 0, W, H);
-    // roads: each settlement links to the closest one of the previous tier
-    g.strokeStyle = 'rgba(92,62,30,0.75)'; g.lineWidth = 3; g.setLineDash([7, 6]);
-    C.settlements.forEach(function (s) {
-      let best = null, bd = Infinity;
-      const prev = s.tier === 1 ? [{ pos: HOME_POS }] : C.settlements.filter(function (o) { return o.tier === s.tier - 1; });
-      prev.forEach(function (o) { const d = U.dist(o.pos[0], o.pos[1], s.pos[0], s.pos[1]); if (d < bd) { bd = d; best = o; } });
+    g.putImageData(img, 0, 0);
+
+    // ---- landmarks: ink-outlined like the rest of the art, lit from the upper left
+    g.lineJoin = 'round'; g.lineCap = 'round';
+    function ink(w) { g.strokeStyle = MAP_INK; g.lineWidth = w || 1.6; g.stroke(); }
+    function tri(x0, y0, x1, y1, x2, y2) { g.beginPath(); g.moveTo(x0, y0); g.lineTo(x1, y1); g.lineTo(x2, y2); g.closePath(); }
+    function dot(x, y, r) { g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); }
+    function tree(x, y, s, col) {
+      g.fillStyle = '#6b4a2f'; g.fillRect(x - 1.2 * s, y - 5 * s, 2.4 * s, 5 * s);
+      dot(x, y - 8.5 * s, 5.8 * s); g.fillStyle = col; g.fill(); ink();
+      dot(x - 2.2 * s, y - 10.6 * s, 2 * s); g.fillStyle = Spr.shade(col, 0.22); g.fill();
+    }
+    function pine(x, y, s, col, snow) {
+      g.fillStyle = '#6b4a2f'; g.fillRect(x - s, y - 3 * s, 2 * s, 3 * s);
+      tri(x - 6.5 * s, y - 2.5 * s, x, y - 18 * s, x + 6.5 * s, y - 2.5 * s); g.fillStyle = col; g.fill(); ink();
+      if (snow) { tri(x - 2.8 * s, y - 11.5 * s, x, y - 18 * s, x + 2.8 * s, y - 11.5 * s); g.fillStyle = '#f3f7fa'; g.fill(); }
+    }
+    function peak(x, y, s, body, cap) {
+      const w = 13 * s, h = 19 * s;
+      tri(x - w, y, x, y - h, x + w, y); g.fillStyle = body; g.fill();
+      tri(x, y - h, x + w, y, x + 2 * s, y); g.fillStyle = Spr.shade(body, -0.24); g.fill();
+      if (cap) {
+        g.beginPath(); g.moveTo(x - w * 0.4, y - h * 0.6); g.lineTo(x, y - h); g.lineTo(x + w * 0.4, y - h * 0.6);
+        g.lineTo(x + w * 0.14, y - h * 0.52); g.lineTo(x - w * 0.08, y - h * 0.64); g.closePath(); g.fillStyle = cap; g.fill();
+      }
+      g.beginPath(); g.moveTo(x - w, y); g.lineTo(x, y - h); g.lineTo(x + w, y); ink();
+    }
+    function volcano(x, y, s) {
+      const w = 24 * s, h = 27 * s, top = 5 * s;
+      g.beginPath(); g.moveTo(x - w, y); g.lineTo(x - top, y - h); g.lineTo(x + top, y - h); g.lineTo(x + w, y); g.closePath(); g.fillStyle = '#5a4d47'; g.fill();
+      tri(x + top, y - h, x + w, y, x + 3 * s, y); g.fillStyle = '#3d3431'; g.fill();
+      g.beginPath(); g.moveTo(x - 1.5 * s, y - h); g.lineTo(x - 4 * s, y - h * 0.62); g.lineTo(x - 1 * s, y - h * 0.46); g.lineTo(x - 6 * s, y - h * 0.12);
+      g.strokeStyle = '#ff7a2e'; g.lineWidth = 2.4 * s; g.stroke();
+      g.beginPath(); g.ellipse(x, y - h, top, 1.8 * s, 0, 0, Math.PI * 2); g.fillStyle = '#ffa04a'; g.fill(); ink(1.3);
+      g.beginPath(); g.moveTo(x - w, y); g.lineTo(x - top, y - h); g.moveTo(x + top, y - h); g.lineTo(x + w, y); ink();
+    }
+    function dune(x, y, s) {
+      g.beginPath(); g.moveTo(x - 12 * s, y); g.quadraticCurveTo(x - 3 * s, y - 9 * s, x + 12 * s, y); g.quadraticCurveTo(x, y - 3 * s, x - 12 * s, y);
+      g.fillStyle = 'rgba(255, 243, 214, 0.4)'; g.fill();
+      g.beginPath(); g.moveTo(x - 12 * s, y); g.quadraticCurveTo(x - 3 * s, y - 9 * s, x + 12 * s, y); ink(1.3);
+    }
+    function cactus(x, y, s) {
+      const path = function () {
+        g.beginPath(); g.moveTo(x, y); g.lineTo(x, y - 12 * s);
+        g.moveTo(x, y - 6 * s); g.lineTo(x - 4 * s, y - 6 * s); g.lineTo(x - 4 * s, y - 9.5 * s);
+        g.moveTo(x, y - 4 * s); g.lineTo(x + 4 * s, y - 4 * s); g.lineTo(x + 4 * s, y - 8 * s);
+      };
+      path(); g.strokeStyle = MAP_INK; g.lineWidth = 5.2 * s; g.stroke();
+      path(); g.strokeStyle = '#79a64f'; g.lineWidth = 2.8 * s; g.stroke();
+    }
+    function rock(x, y, s, col) {
+      g.beginPath(); g.moveTo(x - 6 * s, y); g.lineTo(x - 4 * s, y - 4.5 * s); g.lineTo(x + 1 * s, y - 6 * s); g.lineTo(x + 5.5 * s, y - 2.5 * s); g.lineTo(x + 5 * s, y); g.closePath();
+      g.fillStyle = col; g.fill(); ink(1.3);
+    }
+    function reeds(x, y, s) {
       g.beginPath();
-      g.moveTo(best.pos[0] * W, best.pos[1] * H);
-      g.quadraticCurveTo((best.pos[0] + s.pos[0]) / 2 * W + 18, (best.pos[1] + s.pos[1]) / 2 * H, s.pos[0] * W, s.pos[1] * H);
-      g.stroke();
+      for (let i = -1; i <= 1; i++) { g.moveTo(x + i * 2.6 * s, y); g.lineTo(x + i * 4 * s, y - (i ? 8 : 11) * s); }
+      g.strokeStyle = '#334a20'; g.lineWidth = 1.7 * s; g.stroke();
+    }
+    function pond(x, y, s) {
+      g.beginPath(); g.ellipse(x, y, 13 * s, 5.5 * s, 0, 0, Math.PI * 2); g.fillStyle = '#5d8c84'; g.fill(); ink(1.4);
+      g.beginPath(); g.moveTo(x - 7 * s, y - 1.6 * s); g.lineTo(x - 1.5 * s, y - 1.6 * s); g.strokeStyle = 'rgba(255, 255, 255, 0.5)'; g.lineWidth = 1.4; g.stroke();
+    }
+    function snag(x, y, s) {
+      g.beginPath(); g.moveTo(x, y); g.lineTo(x, y - 12 * s); g.moveTo(x, y - 6 * s); g.lineTo(x - 4.5 * s, y - 10.5 * s); g.moveTo(x, y - 8.5 * s); g.lineTo(x + 4 * s, y - 12.5 * s);
+      g.strokeStyle = '#2a211d'; g.lineWidth = 2.2 * s; g.stroke();
+    }
+    function lava(x, y, s) {
+      g.beginPath(); g.moveTo(x - 8 * s, y); g.lineTo(x - 3 * s, y - 2 * s); g.lineTo(x + 1 * s, y + 1 * s); g.lineTo(x + 7 * s, y - 1.5 * s);
+      g.strokeStyle = MAP_INK; g.lineWidth = 3.6 * s; g.stroke(); g.strokeStyle = '#ff8a3d'; g.lineWidth = 1.8 * s; g.stroke();
+    }
+    const GLYPH = {
+      home: function (x, y, r, s) { if (r < 0.5) tree(x, y, s, r < 0.25 ? '#4e9a3c' : '#559f3f'); else if (r < 0.62) pine(x, y, s, '#2f7a45'); },
+      meadow: function (x, y, r, s) { if (r < 0.5) tree(x, y, s, r < 0.25 ? '#4e9a3c' : '#4a9440'); else if (r < 0.66) pine(x, y, s, '#2f7a45'); else if (r < 0.72) rock(x, y, s, '#a29a8c'); },
+      swamp: function (x, y, r, s) { if (r < 0.3) tree(x, y, s, '#5d7f39'); else if (r < 0.55) reeds(x, y, s); else if (r < 0.64) pond(x, y, s); },
+      desert: function (x, y, r, s) { if (r < 0.4) dune(x, y, s); else if (r < 0.52) cactus(x, y, s); else if (r < 0.6) rock(x, y, s, '#b8a07e'); },
+      snow: function (x, y, r, s) { if (r < 0.5) peak(x, y, s * 1.25, '#9aa6b2', '#f3f7fa'); else if (r < 0.72) pine(x, y, s, '#2f6e4a', true); },
+      volcanic: function (x, y, r, s) { if (r < 0.45) peak(x, y, s * 1.15, '#5e524c', null); else if (r < 0.6) snag(x, y, s); else if (r < 0.7) lava(x, y, s); }
+    };
+    const roads = mapRoads(aspect, maxTier);
+    // keep landmarks off the settlements, their name plates and the roads
+    function clear(u, v) {
+      for (let k = 0; k < n; k++) {
+        const dx = u - sx[k], dy = v - sy[k];
+        if (dx * dx + dy * dy < 0.0049 || (dy > 0 && dy < 0.11 && Math.abs(dx) < 0.14)) return false;
+      }
+      return roads.every(function (rd) { return rd.pts.every(function (p) { return Math.abs(p[0] - u) > 0.03 || Math.abs(p[1] - v) > 0.03; }); });
+    }
+    const rng = new U.Rng(4242), step = 30, marks = [];
+    for (let gy = step * 0.6; gy < H; gy += step) {
+      for (let gx = step * 0.5; gx < W; gx += step) {
+        const x = gx + (rng.next() - 0.5) * step * 0.9, y = gy + (rng.next() - 0.5) * step * 0.9, r = rng.next(), s = 0.85 + rng.next() * 0.35;
+        const u = x / H, v = y / H;
+        if (Math.min(u, aspect - u, v, 1 - v) < 0.04 || !clear(u, v)) continue;
+        const k = nearest(u, v);
+        marks.push({ x: x, y: y, r: r, s: s, biome: sites[k].biome, fog: sites[k].fog });
+      }
+    }
+    // one volcano where the Cinder Legion lives
+    const vu = 0.77 * aspect, vv = 0.18;
+    if (sites[nearest(vu, vv)].biome === 'volcanic') marks.push({ x: vu * H, y: vv * H, volcano: true, fog: sites[nearest(vu, vv)].fog });
+    marks.sort(function (p, q) { return p.y - q.y; });
+    marks.forEach(function (p) {
+      g.globalAlpha = p.fog ? 0.45 : 1;
+      if (p.volcano) volcano(p.x, p.y, 1.1); else GLYPH[p.biome](p.x, p.y, p.r, p.s);
+    });
+    g.globalAlpha = 1;
+
+    // ---- roads: worn ground under a dashed ink track; roads into fog are faint
+    roads.forEach(function (rd) {
+      g.beginPath(); g.moveTo(rd.ax * H, rd.ay * H); g.quadraticCurveTo(rd.cx * H, rd.cy * H, rd.bx * H, rd.by * H);
+      g.setLineDash([]); g.lineWidth = 6; g.strokeStyle = rd.fog ? 'rgba(240, 226, 190, 0.18)' : 'rgba(244, 228, 186, 0.42)'; g.stroke();
+      g.setLineDash([7, 6]); g.lineWidth = 2.2; g.strokeStyle = rd.fog ? 'rgba(43, 30, 18, 0.35)' : 'rgba(43, 30, 18, 0.8)'; g.stroke();
     });
     g.setLineDash([]);
-    // decorations per region
-    const rng = new U.Rng(99);
-    for (let i = 0; i < 140; i++) {
-      const x = rng.next() * W, y = rng.next() * H;
-      let best = null, bd = Infinity;
-      pts.forEach(function (p) { const d = (p.x * W - x) * (p.x * W - x) + (p.y * H - y) * (p.y * H - y); if (d < bd) { bd = d; best = p; } });
-      if (bd < 900) continue;
-      const col = best.col;
-      if (col === BIOME_COL.snow || col === BIOME_COL.volcanic) {
-        g.fillStyle = col === BIOME_COL.snow ? '#b9c9d6' : '#3e2e29';
-        g.beginPath(); g.moveTo(x - 9, y + 6); g.lineTo(x, y - 9); g.lineTo(x + 9, y + 6); g.fill();
-        g.fillStyle = col === BIOME_COL.snow ? '#ffffff' : '#ff7a3c';
-        g.beginPath(); g.moveTo(x - 3.5, y - 3); g.lineTo(x, y - 9); g.lineTo(x + 3.5, y - 3); g.fill();
-      } else if (col === BIOME_COL.desert) {
-        g.strokeStyle = 'rgba(160,120,60,0.6)'; g.lineWidth = 1.5;
-        g.beginPath(); g.moveTo(x - 8, y); g.quadraticCurveTo(x, y - 5, x + 8, y); g.stroke();
-      } else {
-        g.fillStyle = col === BIOME_COL.swamp ? '#4c6a32' : '#3f8a3a';
-        g.beginPath(); g.arc(x, y, 4 + rng.next() * 3, 0, Math.PI * 2); g.fill();
-      }
+
+    // ---- compass rose in the free lower-left corner
+    const cx = 0.07 * aspect * H, cy = 0.87 * H, R = 0.045 * H;
+    g.save(); g.translate(cx, cy);
+    for (let i = 0; i < 4; i++) {
+      g.rotate(i ? Math.PI / 2 : 0);
+      tri(0, -R, R * 0.22, 0, -R * 0.22, 0); g.fillStyle = i % 2 ? '#efe2c4' : '#d4a556'; g.fill(); ink(1.3);
+      tri(0, -R, R * 0.22, 0, 0, 0); g.fillStyle = 'rgba(43, 30, 18, 0.28)'; g.fill();
     }
-    return c;
+    g.restore();
+    dot(cx, cy, R * 0.16); g.fillStyle = '#efe2c4'; g.fill(); ink(1.2);
+    g.fillStyle = MAP_INK; g.font = '400 ' + Math.round(R * 0.62) + 'px "Bree Serif", Georgia, serif'; g.textAlign = 'center'; g.textBaseline = 'alphabetic';
+    g.fillText('N', cx, cy - R - 4);
+    return cv;
   }
 
   function mountMap() {
     const host = document.querySelector('.wmap .wbg');
     if (!host) return;
-    if (!mapCanvas) mapCanvas = drawMap();
-    host.appendChild(mapCanvas);
+    const r = host.getBoundingClientRect();
+    const aspect = r.height ? Math.round(r.width / r.height * 4) / 4 : 1.5;   // the map's shape, to a quarter
+    const tier = NPC.unlockedTier(G.state);
+    const key = aspect + ':' + tier;
+    if (!maps[key]) maps[key] = drawMap(aspect, tier);
+    host.appendChild(maps[key]);
+    // labels of settlements near the edge slide inward instead of being cut off
+    const box = host.parentNode.getBoundingClientRect();
+    host.parentNode.querySelectorAll('.nl').forEach(function (nl) {
+      const b = nl.getBoundingClientRect();
+      if (!b.width) return;
+      const dx = Math.max(0, box.left + 4 - b.left) - Math.max(0, b.right + 4 - box.right);
+      if (dx) nl.style.transform = 'translateX(' + Math.round(dx) + 'px)';
+    });
+  }
+
+  function kv(label, html, cls) {
+    return '<div class="kv' + (cls ? ' ' + cls : '') + '"><span class="lbl">' + label + '</span><div class="kv-v">' + html + '</div></div>';
+  }
+
+  function pips(n) {
+    let s = '';
+    for (let i = 0; i < 3; i++) s += '<i' + (i < n ? ' class="on"' : '') + '></i>';
+    return '<span class="pips" aria-label="' + n + ' of 3">' + s + '</span>';
   }
 
   MODALS.world = function () {
@@ -588,98 +975,130 @@
       UI.worldSel = (fresh || open[0]).id;
     }
     const nodes = C.settlements.map(function (s) {
-      const rec = NPC.rec(st, s.id);
+      const rec = NPC.rec(st, s.id), fac = NPC.faction(s);
       const open = s.tier <= maxTier;
-      const reb = rec.rebuildUntil > t;
-      const fac = NPC.faction(s);
-      return '<button class="node' + (open ? '' : ' locked') + (reb ? ' reb' : '') + (UI.worldSel === s.id ? ' sel' : '') + '" style="left:' + (s.pos[0] * 100) + '%;top:' + (s.pos[1] * 100) + '%;--fc:' + fac.color + '" data-act="node" data-id="' + s.id + '">' +
-        '<span class="dot">' + (open ? s.tier : ICON.lock) + '</span><span class="nl">' + esc(s.name) + (rec.stars ? stars(rec.stars) : '') + '</span></button>';
-    }).join('') + '<div class="node home" style="left:' + HOME_POS[0] * 100 + '%;top:' + HOME_POS[1] * 100 + '%"><span class="dot">' + ICON.home + '</span><span class="nl">Your base</span></div>';
-    return head('World Map', 'sword') + '<div class="mbody world"><div class="wmap"><div class="wbg"></div>' + nodes + '</div>' + worldDetail(UI.worldSel) + '</div>';
+      const reb = open && rec.rebuildUntil > t;
+      const sel = UI.worldSel === s.id;
+      return '<button class="node' + (open ? '' : ' locked') + (reb ? ' reb' : '') + (sel ? ' sel' : '') + '" style="left:' + (s.pos[0] * 100) + '%;top:' + (s.pos[1] * 100) + '%" data-act="node" data-id="' + s.id + '"' +
+        ' aria-pressed="' + sel + '" aria-label="' + esc(s.name) + ', tier ' + s.tier + (open ? '' : ', locked') + (reb ? ', rebuilding' : '') + (rec.stars ? ', ' + rec.stars + ' of 3 stars' : '') + '">' +
+        '<span class="pin">' + CS.Icons.crest(s.faction, fac.color) + '<b class="tno">' + s.tier + '</b>' + (open ? (reb ? '<i class="nb">' + ICON.hammer + '</i>' : '') : '<i class="nb">' + ICON.lock + '</i>') + '</span>' +
+        '<span class="nl">' + esc(s.name) + (rec.stars ? stars(rec.stars) : '') + (reb ? '<small>' + until(rec.rebuildUntil) + '</small>' : '') + '</span></button>';
+    }).join('');
+    const home = '<div class="node home" style="left:' + HOME_POS[0] * 100 + '%;top:' + HOME_POS[1] * 100 + '%"><span class="pin">' +
+      banner(ICON.home.replace('<svg ', '<svg x="8" y="8.4" width="16" height="16" color="#f5ead2" ')) + '</span><span class="nl">Your base</span></div>';
+    const wins = NPC.winsInTier(st, maxTier);
+    const reveal = maxTier < C.tiers.length - 1 ? hstat('flag', wins + '/' + C.world.unlockWins, 'wins to reveal Tier ' + (maxTier + 1), '', 'Win against ' + C.world.unlockWins + ' different Tier ' + maxTier + ' settlements to reveal the next tier.') : hstat('flag', 'All', 'tiers revealed');
+    return head('World Map', 'sword', false, reveal) + '<div class="mbody"><div class="world"><div class="wmap"><div class="wbg"></div>' + nodes + home + '</div>' + worldDetail(UI.worldSel) + '</div></div>';
   };
 
   function worldDetail(id) {
     const st = G.state, t = CS.Clock.now();
-    const s = NPC.def(id);
-    const rec = NPC.rec(st, id);
-    const fac = NPC.faction(s);
+    const s = NPC.def(id), rec = NPC.rec(st, id), fac = NPC.faction(s);
     const chk = G.raidStatus(id);
     const open = NPC.isUnlocked(st, s);
-    let body = '';
-    if (!open) {
-      body = '<div class="notice">' + ic('lock') + esc(chk.reason) + '.</div>';
-    } else {
+    let body;
+    if (!open) body = notice('lock', esc(chk.reason) + '.');
+    else {
       const diff = NPC.difficulty(st, s);
-      const loot = NPC.loot(st, s, t);
-      const bonus = C.tiers[s.tier].bonus;
       const defs = NPC.defenseSummary(st, s);
-      const defHtml = Object.keys(defs).map(function (type) {
-        return '<span class="dchip" data-tip="' + esc(C.buildings[type].name) + ' (up to Lv ' + defs[type].maxLv + ')">' + thumb(type, defs[type].maxLv, fac.color, 48) + '<b>' + defs[type].n + '</b></span>';
+      const chips = Object.keys(defs).map(function (type) {
+        const d = defs[type];
+        return '<span class="dchip" data-tip="' + esc(C.buildings[type].name) + ' &times;' + d.n + ', up to Lv ' + d.maxLv + '">' + thumb(type, d.maxLv, fac.color, 48) +
+          '<span><b>&times;' + d.n + '</b><small>Lv ' + d.maxLv + '</small></span></span>';
       }).join('');
-      const hostility = rec.hostility ? '<div class="hostile">' + ic('warn') + 'Hostility ' + '&#9679;'.repeat(rec.hostility) + '&#9675;'.repeat(3 - rec.hostility) + '. They may raid you in revenge.</div>' : '';
-      body = '<div class="drow"><span class="diff ' + diff.cls + '">' + diff.label + '</span><span class="muted">for your current army</span></div>' +
-        '<div class="loot"><span class="lbl">Available loot</span>' + costHtml(loot) + '<small>+' + U.fmt(bonus) + ' of each for a 3-star win</small></div>' +
-        '<div class="defs"><span class="lbl">Defenses</span>' + (defHtml || '<i>none</i>') + '</div>' +
-        '<div class="record">Record: <b>' + rec.wins + '</b> wins, <b>' + rec.losses + '</b> losses' + (rec.stars ? ' &middot; best ' + stars(rec.stars) : '') + (rec.fortify ? ' &middot; fortified x' + rec.fortify : '') + '</div>' + hostility;
-      if (chk.rebuilding) body += '<div class="notice">' + ic('hammer') + 'Rebuilding after your raid. Opens again in ' + until(chk.rebuilding) + '.</div>';
+      body = kv('Difficulty', '<b class="diff ' + diff.cls + '">' + diff.label + '</b><small>for your current army</small>') +
+        kv('Available loot', costHtml(NPC.loot(st, s, t)) + '<small>+' + U.fmt(C.tiers[s.tier].bonus) + ' of each for a 3-star win</small>') +
+        kv('Defenses', chips ? '<span class="dchips">' + chips + '</span>' : '<small>None</small>') +
+        kv('Record', '<span><b>' + rec.wins + '</b> won &middot; <b>' + rec.losses + '</b> lost</span>' + (rec.stars ? stars(rec.stars) : '') + (rec.fortify ? '<small>Fortified &times;' + rec.fortify + ' after your victories</small>' : '')) +
+        (rec.hostility ? kv('Hostility', pips(rec.hostility) + '<small>They may raid you in revenge.</small>', 'hostile') : '') +
+        (chk.rebuilding ? notice('hammer', 'Rebuilding after your raid. Opens again in ' + until(chk.rebuilding) + '.') : '');
     }
-    const army = Army.totalUnits(st);
     let action;
-    if (chk.ok) action = '<button class="mbtn attack" data-act="attack" data-id="' + id + '">' + ic('sword') + '<span>Attack with ' + army + ' troops</span></button>';
+    if (chk.ok) action = '<button class="mbtn attack" data-act="attack" data-id="' + id + '">' + ic('sword') + '<span>Attack with ' + Army.totalUnits(st) + ' troops</span></button>';
     else if (chk.noArmy && open) action = '<button class="mbtn" data-act="army">' + ic('army') + '<span>Train troops first</span></button>';
-    else action = '<button class="mbtn" disabled>' + ic('sword') + '<span>' + (open ? esc(chk.reason) : 'Locked') + '</span></button>';
-    return '<div class="wdetail" style="--fc:' + fac.color + '"><div class="wd-h"><span class="tier">Tier ' + s.tier + '</span><h3>' + esc(s.name) + '</h3>' +
-      '<div class="muted">' + esc(fac.name) + ' &middot; led by ' + esc(s.leader) + '</div></div>' + body + action +
-      '<p class="hint">Win ' + C.world.unlockWins + ' raids in a tier to reveal the next one. Defeated settlements rebuild stronger and richer.</p></div>';
+    else if (chk.rebuilding) action = '<button class="mbtn" disabled>' + ic('hammer') + '<span>Rebuilding</span></button>';
+    else action = '<button class="mbtn" disabled>' + ic(open ? 'sword' : 'lock') + '<span>' + (open ? esc(chk.reason) : 'Locked') + '</span></button>';
+    return '<div class="wdetail"><div class="wd-h"><span class="wd-crest">' + CS.Icons.crest(s.faction, fac.color) + '</span>' +
+      '<div class="wd-t"><span class="lbl">Tier ' + s.tier + '</span><h3>' + esc(s.name) + '</h3><small>' + esc(fac.name) + ' &middot; led by ' + esc(s.leader) + '</small></div></div>' +
+      '<div class="wd-b">' + body + '</div><div class="wd-act">' + action +
+      '<p class="hint">Win ' + C.world.unlockWins + ' raids in a tier to reveal the next one. Defeated settlements rebuild stronger and richer.</p></div></div>';
   }
 
   // ----- log
   const LOG_ICON = { info: 'info', world: 'scroll', defense: 'shield', raid: 'skull', victory: 'star', defeat: 'warn' };
   MODALS.log = function () {
-    const st = G.state;
+    const st = G.state, s = st.stats;
+    const cell = function (label, value) { return '<div class="lstat"><span class="lbl">' + label + '</span><b>' + value + '</b></div>'; };
     const rows = st.log.map(function (e) {
-      return '<div class="lrow ' + e.kind + '">' + ic(LOG_ICON[e.kind] || 'info') + '<div><p>' + esc(e.text) + '</p><small>' + ago(e.t) + '</small></div></div>';
-    }).join('') || '<p class="hint">Nothing has happened yet.</p>';
-    const s = st.stats;
-    return head('Event Log', 'scroll') + '<div class="mbody"><div class="statsline">Raids won <b>' + s.raidsWon + '</b> &middot; lost <b>' + s.raidsLost +
-      '</b> &middot; defenses held <b>' + s.defended + '</b> &middot; times raided <b>' + s.raided + '</b> &middot; loot taken <b>' + U.fmt(s.lootCredits + s.lootEnergy) + '</b></div>' + rows + '</div>';
+      return '<li class="lrow ' + e.kind + '">' + ic(LOG_ICON[e.kind] || 'info') + '<span>' + esc(e.text) + '</span><small>' + ago(e.t) + '</small></li>';
+    }).join('');
+    return head('Event Log', 'scroll') + '<div class="mbody"><div class="lstats">' +
+      cell('Raids won', s.raidsWon) + cell('Raids lost', s.raidsLost) + cell('Defenses held', s.defended) + cell('Times raided', s.raided) +
+      cell('Loot taken', '<span class="cost">' + resIcon('credits') + U.fmt(s.lootCredits) + '</span><span class="cost">' + resIcon('energy') + U.fmt(s.lootEnergy) + '</span>') +
+      cell('Lost to raiders', U.fmt(s.stolen)) + '</div>' +
+      '<h4>Recent events</h4>' + (rows ? '<ul class="lrows">' + rows + '</ul>' : '<p class="hint">Nothing has happened yet.</p>') + '</div>';
   };
 
   // ----- settings
+  function srow(label, sub, control, cls) {
+    return '<div class="srow' + (cls ? ' ' + cls : '') + '"><div class="sl"><b>' + label + '</b>' + (sub ? '<small>' + sub + '</small>' : '') + '</div>' + control + '</div>';
+  }
+
   function toggle(key, label, sub) {
     const on = !!G.state.settings[key];
-    return '<div class="srow"><div><b>' + label + '</b>' + (sub ? '<small>' + sub + '</small>' : '') + '</div><button class="switch' + (on ? ' on' : '') + '" data-act="setting" data-key="' + key + '" aria-pressed="' + on + '"><span></span></button></div>';
+    return srow(label, sub, '<button class="switch' + (on ? ' on' : '') + '" role="switch" aria-checked="' + on + '" aria-label="' + label + '" data-act="setting" data-key="' + key + '"><span></span></button>');
   }
+
+  function group(title, rows) { return '<h4>' + title + '</h4><div class="sgroup">' + rows + '</div>'; }
 
   MODALS.settings = function () {
     const st = G.state;
     const modes = Object.keys(C.attacks.modes).map(function (k) {
-      return '<button class="seg' + (st.settings.raidMode === k ? ' on' : '') + '" data-act="raidMode" data-v="' + k + '">' + C.attacks.modes[k].label + '</button>';
+      const on = st.settings.raidMode === k;
+      return '<button class="seg' + (on ? ' on' : '') + '" role="radio" aria-checked="' + on + '" data-act="raidMode" data-v="' + k + '">' + C.attacks.modes[k].label + '</button>';
     }).join('');
-    const saved = st.savedAt ? ago(st.savedAt) : 'never';
-    const storage = CS.State.storageAvailable() ? 'Progress is saved in this browser (last save ' + saved + ').' : '<span class="bad">This browser is blocking local storage, so progress cannot be saved.</span>';
-    return head('Settings', 'gear') + '<div class="mbody settings">' +
-      toggle('sfx', 'Sound effects') + toggle('music', 'Music') +
-      '<div class="srow"><div><b>Volume</b></div><input type="range" min="0" max="1" step="0.05" value="' + st.settings.volume + '" data-range="volume" aria-label="Volume"></div>' +
-      toggle('showGrid', 'Always show the grid', 'The grid always appears while building or editing.') +
-      '<div class="srow col"><div><b>NPC raids on your base</b><small>How often enemy settlements attack you. Shields, a protection period and loot caps always apply.</small></div><div class="segs">' + modes + '</div></div>' +
-      '<div class="srow col"><div><b>Saving</b><small>' + storage + ' The game also saves automatically every ' + C.autosaveSec + ' seconds and whenever you leave the tab.</small></div>' +
-      '<div class="row"><button class="sbtn" data-act="saveNow">Save now</button><button class="sbtn" data-act="help">' + ic('help') + 'Controls &amp; help</button><button class="sbtn danger" data-act="resetGame">Start a new game</button></div></div>' +
-      '<p class="hint">Clash of CS runs entirely in your browser with no internet connection or accounts.</p></div>';
+    const ok = CS.State.storageAvailable();
+    const status = ok ? '<span class="sstat">' + ic('check') + (st.savedAt ? 'Saved ' + ago(st.savedAt) : 'Not saved yet') + '</span>' : '<span class="sstat bad">' + ic('warn') + 'Saving is blocked</span>';
+    const sub = ok ? 'Progress is saved in this browser. The game also saves automatically every ' + C.autosaveSec + ' seconds and whenever you leave the tab.'
+      : 'This browser is blocking local storage, so progress cannot be saved.';
+    return head('Settings', 'gear') + '<div class="mbody">' +
+      group('Audio', toggle('sfx', 'Sound effects') + toggle('music', 'Music') +
+        srow('Volume', '', '<input type="range" min="0" max="1" step="0.05" value="' + st.settings.volume + '" data-range="volume" aria-label="Volume">')) +
+      group('Display', toggle('showGrid', 'Always show the grid', 'The grid always appears while building or editing.')) +
+      group('Raids', srow('NPC raids on your base', 'How often enemy settlements attack you. Shields, a protection period and loot caps always apply.',
+        '<div class="segs" role="radiogroup" aria-label="NPC raids on your base">' + modes + '</div>', 'col')) +
+      group('Saving', srow(status, sub, '<button class="sbtn" data-act="saveNow">Save now</button>') +
+        '<div class="srow acts"><button class="sbtn" data-act="help">' + ic('help') + 'Controls &amp; help</button><button class="sbtn danger" data-act="resetGame">Start a new game</button></div>') +
+      '<p class="hint mfoot">Clash of CS runs entirely in your browser with no internet connection or accounts.</p></div>';
   };
 
+  const KEYS = [
+    ['Camera', [['Move the camera', 'Drag, arrow keys or <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd>'], ['Zoom', 'Mouse wheel, pinch or <kbd>+</kbd><kbd>-</kbd>'],
+      ['Recenter on your base', '<kbd>Space</kbd>']]],
+    ['Village', [['Inspect, collect, upgrade', 'Click or tap a building'], ['Build menu', '<kbd>B</kbd>'], ['Edit mode (move buildings)', '<kbd>E</kbd>'],
+      ['Rotate while placing, otherwise Research', '<kbd>R</kbd>'], ['Place the building', '<kbd>Enter</kbd>'], ['Army and training', '<kbd>T</kbd>'], ['World map', '<kbd>M</kbd>'],
+      ['Event log', '<kbd>L</kbd>'], ['Collect all resources', '<kbd>C</kbd>'], ['Controls and help', '<kbd>H</kbd>'], ['Close or cancel, otherwise Settings', '<kbd>Esc</kbd>']]],
+    ['Raids', [['Pick a troop', '<kbd>1</kbd>&ndash;<kbd>6</kbd>'], ['Deploy troops', 'Tap, or hold for a stream'], ['Deploy at the cursor', '<kbd>Space</kbd>'], ['Battle speed', '<kbd>F</kbd>']]]
+  ];
+
   MODALS.help = function () {
-    const keys = [['Drag / arrow keys / WASD', 'Move the camera'], ['Mouse wheel / pinch / + -', 'Zoom'], ['Click or tap a building', 'Inspect, collect, upgrade'], ['B', 'Build menu'], ['E', 'Edit mode (move buildings)'], ['R', 'Rotate while placing, otherwise Research'], ['T', 'Army and training'], ['M', 'World map'], ['L', 'Event log'], ['C', 'Collect all resources'], ['Esc', 'Close / cancel'], ['1-6', 'Pick a troop during a raid'], ['Tap or hold', 'Deploy troops during a raid'], ['Space', 'Deploy at the cursor (raid) or recenter'], ['F', 'Battle speed']];
-    return head('Controls & Help', 'help') + '<div class="mbody help"><table class="keys">' + keys.map(function (k) { return '<tr><td><kbd>' + k[0] + '</kbd></td><td>' + k[1] + '</td></tr>'; }).join('') + '</table>' +
-      '<h4>How to play</h4><ul><li>Generators fill up over time. Tap them to collect into your storages.</li><li>Each Engineer works on one construction at a time. Build more Engineering Stations for more Engineers.</li>' +
-      '<li>Train troops at the Barracks, then raid settlements from the World Map. Destroy half the buildings or the Command Core to win.</li>' +
-      '<li>Raiders attack your base after the protection period. Defenses fight automatically, destroyed buildings are rebuilt by your Engineering Stations, and a shield follows every raid.</li>' +
-      '<li>While the game is closed, production (up to ' + C.offline.maxProductionHours + ' hours), training, construction and research continue. A few raids may happen too.</li></ul></div>';
+    const keys = function (grp) {
+      return '<h4>' + grp[0] + '</h4><table class="keys">' + grp[1].map(function (k) { return '<tr><td>' + k[0] + '</td><td>' + k[1] + '</td></tr>'; }).join('') + '</table>';
+    };
+    const steps = ['Generators fill up over time. Tap them to collect into your storages.',
+      'Each Engineer works on one construction at a time. Build more Engineering Stations for more Engineers.',
+      'Train troops at the Barracks, then raid settlements from the World Map. Destroy half the buildings or the Command Core to win.',
+      'Raiders attack your base after the protection period. Defenses fight automatically, destroyed buildings are rebuilt by your Engineering Stations, and a shield follows every raid.',
+      'While the game is closed, production (up to ' + C.offline.maxProductionHours + ' hours), training, construction and research continue. A few raids may happen too.'];
+    return head('Controls &amp; Help', 'help') + '<div class="mbody"><div class="help"><div>' + keys(KEYS[0]) + keys(KEYS[1]) + '</div>' +
+      '<div>' + keys(KEYS[2]) + '<h4>How to play</h4><ol class="steps">' + steps.map(function (s) { return '<li>' + s + '</li>'; }).join('') + '</ol></div></div></div>';
   };
 
   // ----- confirm
   MODALS.confirm = function (o) {
-    return head(esc(o.title || 'Are you sure?'), 'warn', true) + '<div class="mbody"><p>' + esc(o.text) + '</p><div class="row end"><button class="sbtn" data-act="confirmNo">' + esc(o.no || 'Cancel') + '</button><button class="sbtn ' + (o.danger ? 'danger' : 'primary') + '" data-act="confirmYes">' + esc(o.yes || 'Confirm') + '</button></div></div>';
+    return head(esc(o.title || 'Are you sure?'), o.danger ? 'warn' : 'help', true) + '<div class="mbody"><p class="ctext">' + esc(o.text) + '</p>' +
+      '<div class="mact"><button class="mbtn ghost" data-act="confirmNo">' + esc(o.no || 'Cancel') + '</button>' +
+      '<button class="mbtn ' + (o.danger ? 'danger' : 'primary') + '" data-act="confirmYes">' + esc(o.yes || 'Confirm') + '</button></div></div>';
   };
 
   UI.confirm = function (o, onYes) {
@@ -687,57 +1106,39 @@
     UI.open('confirm', o);
   };
 
-  // ----- raid results
-  function troopSummary(map, cls) {
-    return C.troopOrder.filter(function (t) { return map[t] > 0; }).map(function (t) {
-      return '<div class="chipT ' + (cls || '') + '">' + troopImg(t, null, 40) + '<b>' + map[t] + '</b></div>';
-    }).join('') || '<span class="muted">none</span>';
-  }
-
-  MODALS.results = function (r) {
-    const res = r.res;
-    const pct = Math.round(res.destruction * 100);
-    const head0 = '<div class="banner ' + (res.victory ? 'win' : 'lose') + '"><h2>' + (res.victory ? 'Victory!' : 'Defeat') + '</h2>' + stars(res.stars) +
-      '<div class="pct">' + pct + '% destroyed</div><div class="muted">' + esc(r.s.name) + ' &middot; ' + res.destroyed + ' of ' + res.total + ' buildings &middot; ' + U.fmtTime(res.seconds) + '</div></div>';
-    const loot = '<div class="rbox"><h4>Loot</h4><div class="big">' + costHtml(r.gained) + '</div>' +
-      (r.bonus ? '<small>Includes a victory bonus of ' + U.fmt(r.bonus) + ' each.</small>' : '') +
-      (r.wasted > 0 ? '<small class="bad">' + U.fmt(r.wasted) + ' could not be stored. Your storages are full.</small>' : '') + '</div>';
-    const troops = '<div class="rbox"><h4>Troops</h4><div class="trow"><span>Deployed</span>' + troopSummary(res.deployed) + '</div><div class="trow"><span>Lost</span>' + troopSummary(res.lost, 'lost') + '</div>' +
-      '<small>Survivors return to your army.</small></div>';
-    const ren = '<div class="renown ' + (r.renown > 0 ? 'up' : r.renown < 0 ? 'down' : '') + '">' + ic('renown') + (r.renown ? (r.renown > 0 ? '+' : '') + r.renown + ' renown' : 'Renown unchanged') + '</div>';
-    const notes = r.notes.map(function (n) { return '<div class="note">' + ic('warn') + esc(n) + '</div>'; }).join('');
-    const tips = r.tips.length ? '<div class="rbox tips"><h4>Why the raid failed</h4><ul>' + r.tips.map(function (x) { return '<li>' + esc(x) + '</li>'; }).join('') + '</ul></div>' : '';
-    return '<div class="mbody results">' + head0 + '<div class="rgrid">' + loot + troops + '</div>' + ren + notes + tips +
-      '<div class="row end"><button class="mbtn primary" data-act="home">' + ic('home') + '<span>Return home</span></button></div></div>';
-  };
-
-  UI.raidResults = function (r) {
-    UI.open('results', r);
-    UI.onClose = function () { if (G.mode === 'raid') G.goHome(); };
-  };
-
   // ----- defense report
   function defenseHtml(rep, compact) {
-    const pct = Math.round(rep.destruction * 100);
-    const destroyed = {};
-    rep.destroyed.forEach(function (t) { destroyed[t] = (destroyed[t] || 0) + 1; });
-    const dlist = Object.keys(destroyed).map(function (t) { return C.buildings[t].name + (destroyed[t] > 1 ? ' x' + destroyed[t] : ''); }).join(', ');
-    return '<div class="dreport ' + (rep.defended ? 'win' : 'lose') + '"><div class="dh">' + ic(rep.defended ? 'shield' : 'skull') + '<div><b>' + (rep.defended ? 'Raid repelled' : 'Base raided') + '</b> by ' + esc(rep.attacker) +
-      (rep.raidKind === 'retaliation' ? ' <span class="tag">revenge</span>' : '') + '<small>' + esc(rep.faction) + (compact ? ' &middot; ' + ago(rep.at) : '') + '</small></div>' + stars(rep.stars) + '</div>' +
-      '<div class="dgrid"><div><span>Damage</span><b>' + pct + '%</b></div><div><span>Raiders defeated</span><b>' + rep.killed + ' / ' + rep.raiders + '</b></div>' +
-      '<div><span>Stolen</span><b>' + (rep.stolen.credits + rep.stolen.energy ? costHtml(rep.stolen) : 'nothing') + '</b></div><div><span>Renown</span><b class="' + (rep.renown > 0 ? 'good' : rep.renown < 0 ? 'bad' : '') + '">' + (rep.renown > 0 ? '+' : '') + rep.renown + '</b></div></div>' +
-      (dlist ? '<small>Destroyed: ' + esc(dlist) + '</small>' : '') +
-      (rep.top ? '<small>Top defender: ' + esc(C.buildings[rep.top.type].name) + ' (' + U.fmt(rep.top.dmg) + ' damage)</small>' : '') + '</div>';
+    const st = G.state;
+    const s = NPC.def(rep.attackerId);
+    const counts = {};
+    rep.destroyed.forEach(function (t) { counts[t] = (counts[t] || 0) + 1; });
+    const lost = Object.keys(counts).map(function (t) { return esc(C.buildings[t].name) + (counts[t] > 1 ? ' &times;' + counts[t] : ''); }).join(', ');
+    let top = '';
+    if (rep.top) {
+      const lv = Base.ofType(st, rep.top.type).reduce(function (m, b) { return Math.max(m, b.level); }, 1);
+      top = '<div class="dr-line"><span class="lbl">Top defender</span><span class="dr-top">' + thumb(rep.top.type, lv, null, 48) + esc(C.buildings[rep.top.type].name) + '<small>' + U.fmt(rep.top.dmg) + ' damage</small></span></div>';
+    }
+    return '<div class="dreport ' + (rep.defended ? 'held' : 'lost') + (compact ? ' compact' : '') + '">' +
+      '<div class="dr-h"><span class="dr-crest">' + (s ? CS.Icons.crest(s.faction, NPC.faction(s).color) : ICON.skull) + '</span>' +
+      '<div class="dr-t"><span class="lbl">' + (rep.defended ? 'Raid repelled' : 'Base raided') + (rep.raidKind === 'retaliation' ? ' &middot; revenge' : '') + '</span>' +
+      '<b>' + esc(rep.attacker) + '</b><small>' + esc(rep.faction) + (rep.leader ? ' &middot; led by ' + esc(rep.leader) : '') + (compact ? ' &middot; ' + ago(rep.at) : '') + '</small></div>' +
+      '<div class="dr-stars" data-tip="Stars the raiders earned">' + stars(rep.stars) + '</div></div>' +
+      '<div class="dr-grid"><div><span class="lbl">Damage</span><b>' + U.pct(rep.destruction) + '%</b>' + staticBar(rep.destruction, 'dmg') + '</div>' +
+      '<div><span class="lbl">Raiders defeated</span><b>' + rep.killed + ' / ' + rep.raiders + '</b></div>' +
+      '<div><span class="lbl">Stolen</span><b>' + (rep.stolen.credits + rep.stolen.energy ? costHtml(rep.stolen) : 'Nothing') + '</b></div>' +
+      '<div><span class="lbl">Renown</span><b class="' + (rep.renown > 0 ? 'good' : rep.renown < 0 ? 'bad' : '') + '">' + (rep.renown > 0 ? '+' : '') + rep.renown + '</b></div></div>' +
+      (lost ? '<div class="dr-line"><span class="lbl">Destroyed</span><span>' + lost + '</span></div>' : '') + top + '</div>';
   }
 
   MODALS.defense = function (rep) {
     const st = G.state;
     const cost = Eco.repairAllCost(st);
-    const shield = Math.max(0, (st.threat.shieldUntil - CS.Clock.now()) / 1000);
+    const shield = st.threat.shieldUntil > CS.Clock.now();
     return head(rep.defended ? 'Your defenses held!' : 'Your base was raided', rep.defended ? 'shield' : 'warn', true) + '<div class="mbody">' + defenseHtml(rep) +
-      (shield ? '<div class="notice">' + ic('shield') + '<div>A shield protects you from raids for ' + U.fmtTime(shield) + '.</div></div>' : '') +
-      (cost ? '<div class="notice">' + ic('wrench') + '<div>Engineering Stations repair damage automatically' + (Eco.repairRate(st) ? ' (' + Eco.repairRate(st) + ' HP/s)' : '') + '. Repair everything now for ' + costHtml({ credits: cost }, st) + '?</div></div>' : '') +
-      '<div class="row end">' + (cost ? '<button class="sbtn" data-act="defRepair">' + ic('wrench') + 'Repair now</button>' : '') + '<button class="mbtn primary" data-act="close"><span>Continue</span></button></div></div>';
+      (shield ? notice('shield', 'A shield protects you from raids for ' + until(st.threat.shieldUntil) + '.') : '') +
+      (cost ? notice('wrench', 'Engineering Stations repair damage automatically' + (Eco.repairRate(st) ? ' (' + Eco.repairRate(st) + ' HP/s)' : '') + '. You can also repair everything now.') : '') +
+      '<div class="mact">' + (cost ? '<button class="mbtn" data-act="defRepair">' + ic('wrench') + '<span>Repair now</span>' + costHtml({ credits: cost }, st) + '</button>' : '') +
+      '<button class="mbtn primary" data-act="close"><span>Continue</span></button></div></div>';
   };
 
   UI.defenseReport = function (rep) {
@@ -746,25 +1147,28 @@
   };
 
   // ----- away report
+  function arow(icon, title, html) { return '<div class="arow">' + ic(icon) + '<div><b>' + title + '</b>' + html + '</div></div>'; }
+
   MODALS.away = function (rep) {
     const st = G.state;
     const parts = [];
     const prod = rep.produced.credits + rep.produced.energy;
-    if (prod > 0) parts.push('<div class="arow">' + ic('hand') + '<div><b>Produced</b> ' + costHtml(rep.produced) + '<small>Waiting in your generators.' + (rep.capped ? ' Production while away is capped at ' + C.offline.maxProductionHours + ' hours.' : '') + '</small></div></div>');
+    if (prod > 0) parts.push(arow('sack', 'Produced', '<span class="arow-v">' + costHtml(rep.produced) + '</span><small>Waiting in your generators.' + (rep.capped ? ' Production while away is capped at ' + C.offline.maxProductionHours + ' hours.' : '') + '</small>'));
     const done = rep.built.map(function (e) { return C.buildings[e.btype].name + ' built'; }).concat(rep.upgraded.map(function (e) { return C.buildings[e.btype].name + ' Lv ' + e.level; }));
-    if (done.length) parts.push('<div class="arow">' + ic('hammer') + '<div><b>Construction finished</b><small>' + esc(done.join(', ')) + '</small></div></div>');
+    if (done.length) parts.push(arow('hammer', 'Construction finished', '<small>' + esc(done.join(', ')) + '</small>'));
     const tr = Object.keys(rep.trained);
-    if (tr.length) parts.push('<div class="arow">' + ic('army') + '<div><b>Troops trained</b><small>' + tr.map(function (t) { return rep.trained[t] + ' ' + C.troops[t].name + (rep.trained[t] > 1 ? 's' : ''); }).join(', ') + '</small></div></div>');
-    if (rep.research.length) parts.push('<div class="arow">' + ic('flask') + '<div><b>Research complete</b><small>' + rep.research.map(function (e) { return esc(CS.Research.describe(st, e.key).name) + ' Lv ' + e.level; }).join(', ') + '</small></div></div>');
-    if (rep.repaired) parts.push('<div class="arow">' + ic('wrench') + '<div><b>Rebuilt</b><small>' + rep.repaired + ' destroyed building' + (rep.repaired > 1 ? 's were' : ' was') + ' restored by your Engineers.</small></div></div>');
+    if (tr.length) parts.push(arow('army', 'Troops trained', '<small>' + tr.map(function (t) { return rep.trained[t] + ' ' + C.troops[t].name + (rep.trained[t] > 1 ? 's' : ''); }).join(', ') + '</small>'));
+    if (rep.research.length) parts.push(arow('flask', 'Research complete', '<small>' + rep.research.map(function (e) { return esc(CS.Research.describe(st, e.key).name) + ' Lv ' + e.level; }).join(', ') + '</small>'));
+    if (rep.repaired) parts.push(arow('wrench', 'Rebuilt', '<small>' + rep.repaired + ' destroyed building' + (rep.repaired > 1 ? 's were' : ' was') + ' restored by your Engineers.</small>'));
     const raids = rep.raids.map(function (r) { return defenseHtml(r, true); }).join('');
     const seen = {};
     rep.news.forEach(function (n) { seen[n] = (seen[n] || 0) + 1; });
     const lines = Object.keys(seen).slice(-6);
-    const news = lines.length ? '<h4>World news</h4><ul class="news">' + lines.map(function (n) { return '<li>' + esc(n) + (seen[n] > 1 ? ' <b>(x' + seen[n] + ')</b>' : '') + '</li>'; }).join('') + '</ul>' : '';
-    return head('Welcome back, Commander', 'home', true) + '<div class="mbody away"><p class="muted">You were away for <b>' + U.fmtTime(rep.seconds) + '</b>.</p>' + parts.join('') +
-      (raids ? '<h4>Raids on your base</h4>' + raids : '') + news +
-      '<div class="row end">' + (prod > 0 ? '<button class="sbtn" data-act="awayCollect">' + ic('hand') + 'Collect all</button>' : '') + '<button class="mbtn primary" data-act="close"><span>Continue</span></button></div></div>';
+    const news = lines.length ? '<h4>World news</h4><ul class="news">' + lines.map(function (n) { return '<li>' + esc(n) + (seen[n] > 1 ? ' <b>(&times;' + seen[n] + ')</b>' : '') + '</li>'; }).join('') + '</ul>' : '';
+    return head('Welcome back, Commander', 'home', true) + '<div class="mbody"><p class="lead">You were away for <b>' + U.fmtTime(rep.seconds) + '</b>.</p>' +
+      (parts.length ? '<div class="arows">' + parts.join('') + '</div>' : '') + (raids ? '<h4>Raids on your base</h4><div class="draids">' + raids + '</div>' : '') + news +
+      '<div class="mact">' + (prod > 0 ? '<button class="mbtn ghost" data-act="close"><span>Continue</span></button><button class="mbtn primary" data-act="awayCollect">' + ic('sack') + '<span>Collect all</span></button>'
+        : '<button class="mbtn primary" data-act="close"><span>Continue</span></button>') + '</div></div>';
   };
 
   // Reports wait until nothing else is open; UI.tick shows the next one.
@@ -774,67 +1178,260 @@
   };
   UI.queue = [];
 
+
+  Object.assign(ACT, {
+    tab: function (el) { UI.tab = el.dataset.tab; renderModal(); CS.Audio.play('click'); },
+    buildType: function (el) { if (G.build(el.dataset.type)) UI.close(); },
+    help: function () { UI.open('help'); },
+    close: function () { UI.close(); },
+    train: function (el) { G.train(el.dataset.type, Number(el.dataset.n)); },
+    untrain: function (el) { G.untrain(Number(el.dataset.i)); },
+    doResearch: function (el) { G.research(el.dataset.key); },
+    cancelResearch: function () { UI.confirm({ title: 'Cancel research?', text: 'Stop the current research and get half of its cost back?', yes: 'Cancel it', no: 'Keep going', danger: true }, function () { G.cancelResearch(); UI.open('research'); }); },
+    node: function (el) { UI.worldSel = el.dataset.id; renderModal(); CS.Audio.play('click'); },
+    attack: function (el) { G.startRaid(el.dataset.id); },
+    setting: function (el) { G.setSetting(el.dataset.key, !G.state.settings[el.dataset.key]); CS.Audio.play('click'); },
+    raidMode: function (el) { G.setSetting('raidMode', el.dataset.v); CS.Audio.play('click'); },
+    saveNow: function () { const ok = G.save(); UI.toast(ok ? 'Game saved' : 'Saving failed. Storage may be full or blocked.', ok ? 'good' : 'bad', ok ? 'check' : 'warn'); renderModal(); },
+    resetGame: function () {
+      UI.confirm({ title: 'Start a new game?', text: 'Your settlement, army and progress will be erased for good.', yes: 'Erase everything', danger: true }, function () {
+        setTimeout(function () {
+          UI.confirm({ title: 'Really erase?', text: 'Last chance. There is no way to recover the old settlement afterwards.', yes: 'Yes, start over', danger: true }, function () { G.newGame(); });
+        }, 0);
+      });
+    },
+    confirmYes: function () { const f = UI._confirm; UI._confirm = null; UI.close(); if (f) f(); },
+    confirmNo: function () { UI._confirm = null; UI.close(); },
+    awayCollect: function () { G.collectAll(); UI.close(); },
+    defRepair: function () { G.repairAll(); renderModal(); }
+  });
+
   // ---------------------------------------------------------------- battle HUD
-  function battleHudHtml() {
-    return '<div class="bh-top"><div class="bh-target"><b id="bhName"></b><small id="bhSub"></small><div class="bh-loot" id="bhLoot"></div></div>' +
-      '<div class="bh-timer"><small id="bhPhase"></small><b id="bhTime"></b></div>' +
-      '<div class="bh-score"><b id="bhPct">0%</b><span id="bhStars"></span></div></div>' +
-      '<div class="bh-hint" id="bhHint"></div>' +
-      '<div class="bh-bottom"><div class="bh-troops" id="bhTroops"></div><div class="bh-ctrl">' +
-      '<button class="cbtn" data-act="speed" id="bhSpeed" data-tip="Battle speed <kbd>F</kbd>">' + ICON.speed + '<b>1x</b></button>' +
-      '<button class="mbtn danger" data-act="endBattle" id="bhEnd">' + ic('flag') + '<span>End battle</span></button></div></div>';
+  // Raid HUD: the target and its loot (top left), the clock (top centre), destruction with the
+  // three victory conditions (top right), a hint, the troop bar (bottom left) and the battle
+  // controls (bottom right). Every value is read from the live battle.
+  function sumOf(o) { let n = 0; Object.keys(o || {}).forEach(function (k) { n += o[k]; }); return n; }
+  function setClass(el, c) { if (el.className !== c) el.className = c; }
+  function setTxt(el, v) { v = String(v); if (el.textContent !== v) el.textContent = v; }
+  function setAttr(el, k, v) { if (el.getAttribute(k) !== v) el.setAttribute(k, v); }
+
+  const RAID_END = { wiped: 'Every building destroyed', time: 'Time ran out', troops: 'No troops left', retreat: 'You ended the battle' };
+
+  function lootRow(r) {
+    return '<div class="bh-lr">' + resIcon(r) + '<b id="bhGot_' + r + '">0</b><div class="bar ' + r + '"><div id="bhBar_' + r + '"></div></div><small id="bhLeft_' + r + '"></small></div>';
   }
 
-  UI.refreshBattle = function () {
-    const b = G.battle || G.lastBattle;
-    if (!b || G.mode !== 'raid') return;
-    const troops = C.troopOrder.filter(function (t) { return (b.meta.brought || {})[t] > 0; }).map(function (t, i) {
-      const n = b.pool[t] || 0;
-      return '<button class="tbtn' + (G.troopSel === t ? ' on' : '') + (n ? '' : ' empty') + '" data-act="troop" data-type="' + t + '" data-tip="' + esc(C.troops[t].name) + ' <kbd>' + (i + 1) + '</kbd>">' + troopImg(t, null, 56) + '<b>' + n + '</b><span class="lvl">' + (b.troopLv[t] || 1) + '</span></button>';
-    }).join('');
-    $('bhTroops').innerHTML = troops;
-    $('bhSpeed').querySelector('b').textContent = G.speed + 'x';
-    const endBtn = $('bhEnd');
-    endBtn.querySelector('span').textContent = b.deployedAny ? 'End battle' : 'Return home';
-    endBtn.className = 'mbtn ' + (b.deployedAny ? 'danger' : '');
-    endBtn.querySelector('.ic').innerHTML = b.deployedAny ? ICON.flag : ICON.home;
-    updateBattleHud();
-  };
+  function goal(i, label, tip) {
+    return '<li id="bhGoal' + i + '" data-tip="' + tip + '">' + ic('starOff') + '<span>' + label + '</span></li>';
+  }
+
+  function battleHudHtml() {
+    const half = U.pct(C.battle.winDestruction);
+    return '<div class="bh-top" data-inset="t">' +
+      '<div class="bh-target plaque"><div class="bh-id"><span class="bh-crest" id="bhCrest"></span><div class="bh-idt"><b id="bhName"></b><small id="bhSub"></small><small class="bh-diff" id="bhDiff"></small></div></div>' +
+      '<div class="bh-loot"><span class="lbl">Loot taken</span>' + lootRow('credits') + lootRow('energy') + '</div></div>' +
+      '<div class="bh-clock plaque" id="bhClock"><span class="lbl" id="bhPhase"></span><b id="bhTime"></b><small id="bhNote"></small></div>' +
+      '<div class="bh-score plaque"><div class="bh-pct"><b id="bhPct">0%</b><span class="lbl">Destroyed</span></div><ul class="bh-goals" aria-label="Victory stars">' +
+      goal(0, half + '%', 'Destroy ' + half + '% of the buildings') + goal(1, 'Core', 'Destroy the Command Core') + goal(2, '100%', 'Destroy every building') + '</ul></div></div>' +
+      '<div class="bh-bottom" data-inset="b">' +
+      '<div class="bh-troops plaque"><div class="bh-count"><b id="bhCount">0</b><span class="lbl">Troops left</span></div><div class="bh-tlist" id="bhTroops"></div></div>' +
+      '<p class="bh-hint" id="bhHint"></p>' +
+      '<div class="bh-ctrl plaque"><button class="mbtn bh-speed" data-act="speed" id="bhSpeed" data-tip="Battle speed <kbd>F</kbd>">' + ic('speed') + '<span>1x</span></button>' +
+      '<button class="mbtn" data-act="endBattle" id="bhEnd"></button></div></div>';
+  }
+
+  function defHudHtml() {
+    const half = U.pct(C.battle.winDestruction);
+    return '<div class="dh-who" id="dhWho"><span class="dh-crest" id="dhCrest"></span><div class="dh-wt"><span class="lbl" id="dhKind"></span><b id="dhName"></b></div></div>' +
+      '<div class="dh-stats"><div class="dh-stat"><b id="dhTime">0:00</b><small>left</small></div>' +
+      '<div class="dh-stat" id="dhDmg" data-tip="The raiders win at ' + half + '% damage or by destroying your Command Core."><b>0%</b><small>damage</small></div>' +
+      '<div class="dh-stat"><b id="dhLeft">0</b><small>raiders left</small></div></div>' +
+      '<div class="dh-act"><button class="sbtn bh-speed" data-act="speed" id="dhSpeed" data-tip="Battle speed <kbd>F</kbd>">' + ic('speed') + '<span>1x</span></button>' +
+      '<button class="sbtn" data-act="skipDefense" id="dhSkip" data-tip="Resolve the rest of the fight instantly">' + ic('skip') + '<span>Skip</span></button></div>';
+  }
+
+  function speedBtn(el, cls) {
+    setTxt(el.lastElementChild, G.speed + 'x');
+    setAttr(el, 'aria-label', 'Battle speed ' + G.speed + 'x');
+    setClass(el, cls + (G.speed > 1 ? ' fast' : ''));
+  }
+
+  UI.refreshBattle = function () { updateBattleHud(); };
 
   function updateBattleHud() {
     const b = G.battle || G.lastBattle;
-    if (!b) return;
-    const Bt = CS.Battle;
-    const pct = Math.floor(Bt.destruction(b) * 100);
-    if (G.mode === 'raid') {
-      const s = NPC.def(b.targetId);
-      $('bhName').textContent = s.name;
-      $('bhSub').textContent = 'Tier ' + s.tier + ' · ' + NPC.faction(s).name + ' · ' + (b.meta.difficulty || '');
-      let lc = 0, le = 0;
-      b.buildings.forEach(function (c) { if (c.lootLeft) { lc += c.lootLeft.credits; le += c.lootLeft.energy; } });
-      $('bhLoot').innerHTML = '<span class="lbl">Loot taken</span><span class="cost">' + resIcon('credits') + U.fmt(b.loot.credits) + '<small>/ ' + U.fmt(lc + b.loot.credits) + '</small></span><span class="cost">' + resIcon('energy') + U.fmt(b.loot.energy) + '<small>/ ' + U.fmt(le + b.loot.energy) + '</small></span>';
-      $('bhPhase').textContent = b.phase === 'scout' ? 'Scouting: deploy to start' : 'Battle ends in';
-      $('bhTime').textContent = U.clockTime(Bt.timeLeft(b));
-      $('bhPct').textContent = pct + '%';
-      const st = (Bt.destruction(b) >= C.battle.winDestruction ? 1 : 0) + (b.coreDown ? 1 : 0) + (Bt.destruction(b) >= 1 ? 1 : 0);
-      $('bhStars').innerHTML = stars(st);
-      const left = Bt.poolTotal(b);
-      $('bhHint').textContent = b.ended ? '' : b.phase === 'scout' ? 'Look around, pick a troop below, then tap outside the red zone. Hold to deploy a stream of troops.'
-        : left ? 'Destroy 50% of the buildings or the Command Core to win.' : 'All troops deployed.';
+    if (!b || G.mode !== 'raid') return;
+    const Bt = CS.Battle, s = NPC.def(b.targetId), fac = NPC.faction(s);
+    setText('bhName', s.name);
+    setText('bhSub', 'Tier ' + s.tier + ' · ' + fac.name);
+    setHtml($('bhCrest'), CS.Icons.crest(s.faction, fac.color));
+    const d = b.meta.difficulty;
+    setHtml($('bhDiff'), d ? '<b class="d-' + esc(d.toLowerCase()) + '">' + esc(d) + '</b> for your army' : '');
+    // loot taken against what the standing buildings still hold
+    const left = { credits: 0, energy: 0 };
+    b.buildings.forEach(function (c) { if (c.lootLeft) { left.credits += c.lootLeft.credits; left.energy += c.lootLeft.energy; } });
+    Eco.RES.forEach(function (r) {
+      const got = b.loot[r], all = got + left[r];
+      setText('bhGot_' + r, U.fmt(got));
+      setText('bhLeft_' + r, all < 1 ? 'none' : left[r] < 1 ? 'all taken' : U.fmt(left[r]) + ' left');
+      setWidth('bhBar_' + r, all ? got / all : 0);
+    });
+    // the clock stands still while scouting and turns urgent in the last 30 seconds
+    const tl = Bt.timeLeft(b), scout = b.phase === 'scout';
+    setText('bhPhase', b.ended ? 'Battle over' : scout ? 'Scouting' : 'Battle ends in');
+    setText('bhTime', U.clockTime(tl));
+    setText('bhNote', scout && !b.ended ? 'Deploy to start' : '');
+    setClass($('bhClock'), 'bh-clock plaque' + (b.ended ? ' over' : scout ? ' scout' : tl <= 30 ? ' urgent' : ''));
+    const f = Bt.destruction(b);
+    setText('bhPct', U.pct(f) + '%');
+    [f >= C.battle.winDestruction, !!b.coreDown, f >= 1].forEach(function (met, i) {
+      const li = $('bhGoal' + i);
+      if (li.classList.contains('met') === met) return;
+      li.classList.toggle('met', met);
+      li.firstElementChild.innerHTML = ICON[met ? 'star' : 'starOff'];
+    });
+    updateTroops(b);
+    speedBtn($('bhSpeed'), 'mbtn bh-speed');
+    const end = $('bhEnd'), dep = b.deployedAny;
+    setClass(end, 'mbtn' + (dep && !b.ended ? ' danger' : ''));   // a finished battle's button reads as disabled
+    setHtml(end, ic(dep ? 'flag' : 'home') + '<span>' + (dep ? 'End battle' : 'Return home') + '</span>');
+    end.disabled = b.ended;
+    setText('bhHint', b.ended ? '' : scout ? 'Look around, pick a troop, then tap outside the red zone. Hold to deploy a stream of troops.'
+      : Bt.poolTotal(b) ? 'Destroy ' + U.pct(C.battle.winDestruction) + '% of the buildings or the Command Core to win.' : 'All troops deployed.');
+  }
+
+  // One button per troop type brought, numbered like the 1-6 keys. Rebuilt only when that set
+  // changes, so a focused button keeps focus while counts update.
+  function updateTroops(b) {
+    const box = $('bhTroops');
+    const list = C.troopOrder.filter(function (t) { return (b.meta.brought || {})[t] > 0; });
+    if (box.dataset.key !== list.join()) {
+      box.dataset.key = list.join();
+      box.innerHTML = list.map(function (t, i) {
+        return '<button class="tbtn" data-act="troop" data-type="' + t + '" data-tip="' + esc(C.troops[t].name) + ' <kbd>' + (i + 1) + '</kbd>">' +
+          '<kbd>' + (i + 1) + '</kbd><span class="lv"></span>' + troopImg(t, null, 56) + '<b></b></button>';
+      }).join('');
     }
+    Array.prototype.forEach.call(box.children, function (el) {
+      const t = el.dataset.type, n = b.pool[t] || 0, lv = b.troopLv[t] || 1;
+      const on = !b.ended && n > 0 && G.troopSel === t;
+      setClass(el, 'tbtn' + (on ? ' on' : ''));
+      el.disabled = b.ended || !n;
+      setAttr(el, 'aria-pressed', String(on));
+      setAttr(el, 'aria-label', C.troops[t].name + ', ' + n + ' left, level ' + lv);
+      setTxt(el.querySelector('.lv'), 'Lv ' + lv);
+      setTxt(el.querySelector('b'), n);
+    });
+    setText('bhCount', CS.Battle.poolTotal(b));
   }
 
   function defenseHudUpdate() {
     const el = $('defhud');
     const b = G.battle;
     if (G.mode !== 'defense' || !b) { el.classList.add('hidden'); return; }
-    const s = NPC.def(b.attackerId);
-    const alive = b.units.length + b.ai.length;
+    const Bt = CS.Battle, s = NPC.def(b.attackerId), fac = NPC.faction(s), f = Bt.destruction(b);
+    setHtml($('dhCrest'), CS.Icons.crest(s.faction, fac.color));
+    setAttr($('dhWho'), 'data-tip', esc(fac.name) + ' &middot; Tier ' + s.tier);
+    setText('dhKind', b.meta.raidKind === 'retaliation' ? 'Revenge raid' : 'Raid in progress');
+    setText('dhName', s.name);
+    setText('dhTime', U.clockTime(Bt.timeLeft(b)));
+    const dmg = $('dhDmg');
+    setTxt(dmg.firstElementChild, U.pct(f) + '%');
+    setClass(dmg, 'dh-stat' + (f >= C.battle.winDestruction || b.coreDown ? ' bad' : ''));
+    setText('dhLeft', b.units.length + b.ai.length);
+    speedBtn($('dhSpeed'), 'sbtn bh-speed');
+    $('dhSkip').disabled = b.ended;
     el.classList.remove('hidden');
-    $('dhName').textContent = 'Raid by ' + s.name;
-    $('dhInfo').innerHTML = U.clockTime(CS.Battle.timeLeft(b)) + ' &middot; ' + Math.floor(CS.Battle.destruction(b) * 100) + '% damage &middot; ' + alive + ' raiders';
-    $('dhSpeed').querySelector('b').textContent = G.speed + 'x';
   }
+
+  function starRow(n) {
+    let s = '';
+    for (let i = 0; i < 3; i++) s += '<i class="ic' + (i < n ? ' lit' : '') + '" style="--i:' + i + '">' + ICON[i < n ? 'star' : 'starOff'] + '</i>';
+    return '<span class="rs-stars" role="img" aria-label="' + n + ' of 3 stars">' + s + '</span>';
+  }
+
+  // ----- end-of-battle ribbon: the verdict, read from the finished battle, shown until its report opens
+  let ribbon = null, ribbonFor = null, ribbonT = 0;
+  function hideRibbon() {
+    clearTimeout(ribbonT);
+    if (ribbon) ribbon.classList.add('hidden');
+  }
+  CS.Bus.on('ui:open', hideRibbon);
+
+  UI.battleOver = function (b) {
+    if (!b || !b.ended || b === ribbonFor) return;
+    ribbonFor = b;
+    const res = CS.Battle.result(b), pct = U.pct(res.destruction);
+    const raid = b.kind === 'attack', win = raid ? res.victory : !res.victory;
+    const title = raid ? (win ? 'Victory' : 'Defeat') : (win ? 'Raid repelled' : 'Base raided');
+    const sub = raid ? (res.reason === 'wiped' ? RAID_END.wiped : pct + '% destroyed · ' + (RAID_END[res.reason] || 'Battle over'))
+      : pct + '% damage · ' + sumOf(res.lost) + ' of ' + sumOf(res.deployed) + ' raiders defeated';
+    if (!ribbon) {
+      ribbon = document.createElement('div');
+      ribbon.setAttribute('role', 'status');
+      document.body.appendChild(ribbon);
+    }
+    ribbon.className = 'bh-over ' + (win ? 'win' : 'lose');
+    ribbon.innerHTML = (raid ? starRow(res.stars) : ic(win ? 'shield' : 'skull', 'bo-ic')) + '<h2>' + title + '</h2><p>' + esc(sub) + '</p>';
+    clearTimeout(ribbonT);
+    ribbonT = setTimeout(hideRibbon, 2600);   // fallback; opening the report hides it sooner
+  };
+
+  // ----- raid results
+  function troopSummary(res) {
+    const rows = C.troopOrder.filter(function (t) { return res.deployed[t] > 0; }).map(function (t) {
+      const lost = res.lost[t] || 0;
+      return '<tr><td>' + troopImg(t, null, 40) + esc(C.troops[t].name) + '</td><td>' + res.deployed[t] + '</td><td' + (lost ? ' class="bad"' : '') + '>' + lost + '</td></tr>';
+    }).join('');
+    return '<table class="rs-troops"><tr><th></th><th><span class="lbl">Deployed</span></th><th><span class="lbl">Lost</span></th></tr>' + rows + '</table>';
+  }
+
+  function cell(label, value) { return '<div><span class="lbl">' + label + '</span><b>' + value + '</b></div>'; }
+
+  MODALS.results = function (r) {
+    const res = r.res, s = r.s, fac = NPC.faction(s), win = res.victory;
+    const loot = Eco.RES.map(function (k) { return '<span class="cost">' + resIcon(k) + (r.gained[k] > 0 ? '+' : '') + U.fmt(r.gained[k]) + '</span>'; }).join('');
+    const notes = r.notes.map(function (n) {
+      const warn = /revenge|counterattack/i.test(n);
+      return '<div class="notice' + (warn ? ' warn' : '') + '">' + ic(warn ? 'warn' : 'info') + '<span>' + esc(n) + '</span></div>';
+    }).join('');
+    const tips = r.tips.length ? '<div class="rs-tips"><h4>Why the raid failed</h4><ul>' + r.tips.map(function (x) { return '<li>' + esc(x) + '</li>'; }).join('') + '</ul></div>' : '';
+    return '<div class="mh"><span class="rs-crest">' + CS.Icons.crest(s.faction, fac.color) + '</span><div class="rs-ht"><h2>' + esc(s.name) + '</h2><small class="rs-tier">Tier ' + s.tier + ' · ' + esc(fac.name) + '</small></div></div>' +
+      '<div class="mbody results"><div class="rs-verdict ' + (win ? 'win' : 'lose') + '"><h3>' + (win ? 'Victory' : 'Defeat') + '</h3>' + starRow(res.stars) +
+      '<p>' + esc(RAID_END[res.reason] || '') + '</p></div>' +
+      '<div class="rs-stats">' + cell('Destroyed', U.pct(res.destruction) + '%') + cell('Buildings', res.destroyed + ' of ' + res.total) +
+      cell('Command Core', res.coreDown ? 'Destroyed' : 'Standing') + cell('Battle time', U.fmtTime(res.seconds)) + '</div>' +
+      '<div class="rs-cols"><section class="rs-box"><h4>Loot gained</h4><div class="rs-loot">' + loot + '</div>' +
+      (r.bonus ? '<small>Includes a victory bonus of ' + U.fmt(r.bonus) + ' each.</small>' : '') +
+      (r.wasted > 0 ? '<small class="bad">' + U.fmt(r.wasted) + ' could not be stored. Your storages are full.</small>' : '') +
+      '<h4>Renown</h4><div class="rs-renown ' + (r.renown > 0 ? 'up' : r.renown < 0 ? 'down' : '') + '">' + ic('renown') +
+      (r.renown ? (r.renown > 0 ? '+' : '') + r.renown : 'Unchanged') + '</div></section>' +
+      '<section class="rs-box"><h4>Troops</h4>' + troopSummary(res) + '<small>Survivors return to your army.</small></section></div>' + notes + tips + '</div>' +
+      '<div class="rs-foot"><button class="mbtn primary" data-act="home">' + ic('home') + '<span>Return home</span></button></div>';
+  };
+
+  UI.raidResults = function (r) {
+    hideRibbon();
+    UI.open('results', r);
+    UI.onClose = function () { if (G.mode === 'raid') G.goHome(); };
+    const home = document.querySelector('#modal [data-act="home"]');
+    if (home) home.focus({ preventScroll: true });
+  };
+
+  Object.assign(ACT, {
+    troop: function (el) { G.selectTroop(el.dataset.type); },
+    speed: function () { G.toggleSpeed(); defenseHudUpdate(); },
+    endBattle: function () {
+      const b = G.battle;
+      if (!b) return;
+      if (!b.deployedAny) { G.endBattle(); return; }
+      UI.confirm({ title: 'End the battle?', text: 'Your troops stop fighting and the result is counted now. Survivors come home.', yes: 'End battle', danger: true }, function () {
+        G.endBattle();
+      });
+    },
+    skipDefense: function () { G.skipDefense(); },
+    home: function () { UI.onClose = null; UI.close(); G.goHome(); }
+  });
 
   // ---------------------------------------------------------------- modes
   UI.enterVillage = function () {
@@ -843,6 +1440,7 @@
     $('battlehud').classList.add('hidden');
     $('defhud').classList.add('hidden');
     UI.refresh(true);
+    measureInsets();
   };
 
   UI.enterDefense = function () {
@@ -851,6 +1449,7 @@
     $('battlehud').classList.add('hidden');
     defenseHudUpdate();
     UI.refresh(true);
+    measureInsets();
   };
 
   UI.enterRaid = function () {
@@ -859,6 +1458,7 @@
     $('defhud').classList.add('hidden');
     $('battlehud').classList.remove('hidden');
     UI.refreshBattle();
+    measureInsets();
   };
 
   // ---------------------------------------------------------------- title screen
@@ -866,12 +1466,14 @@
     const st = G.state;
     const el = $('title');
     const existing = loaded.status === 'loaded' || loaded.status === 'recovered';
-    const msg = loaded.message ? '<div class="tnotice">' + ic('warn') + esc(loaded.message) + '</div>' : '';
-    el.innerHTML = '<div class="tbox"><div class="logo"><span class="l1">Clash</span><span class="l2">of</span><span class="l3">CS</span></div>' +
+    const msg = loaded.message ? '<div class="tnotice">' + ic('warn') + '<span>' + esc(loaded.message) + '</span></div>' : '';
+    el.innerHTML = '<div class="tbox"><div class="logo"><span class="crestbig">' + banner(ICON.sword.replace('<svg ', '<svg x="7" y="7.4" width="18" height="18" ')) + '</span>' +
+      '<h1 class="wordmark"><span class="w1">Clash</span><span class="w2">of</span><span class="w3">CS</span></h1></div>' +
       '<p class="tagline">Build your settlement. Train an army. Raid your rivals.</p>' + msg +
-      (existing ? '<div class="tsave">' + ic('renown') + 'Commander Lv <b>' + st.player.level + '</b> &middot; Command Core Lv <b>' + Base.coreLevel(st) + '</b> &middot; Renown <b>' + st.player.renown + '</b></div>' : '') +
-      '<button class="mbtn primary big" data-act="play">' + ic('sword') + '<span>' + (existing ? 'Continue' : 'Play') + '</span></button>' +
-      (existing ? '<button class="sbtn ghost" data-act="titleNew">Start a new game</button>' : '') +
+      (existing ? '<div class="tsave"><span>' + ic('star') + 'Commander <b>Lv ' + st.player.level + '</b></span><span>' + ic('core') + 'Command Core <b>Lv ' + Base.coreLevel(st) + '</b></span>' +
+        '<span>' + ic('renown') + '<b>' + U.fmt(st.player.renown) + '</b> renown</span></div>' : '') +
+      '<div class="tactions"><button class="mbtn primary big" data-act="play">' + ic('sword') + '<span>' + (existing ? 'Continue' : 'Play') + '</span></button>' +
+      (existing ? '<button class="sbtn ghost" data-act="titleNew">Start a new game</button>' : '') + '</div>' +
       '<p class="foot">Runs fully offline. Your progress is saved in this browser.</p></div>';
     el.classList.remove('hidden');
     document.body.dataset.mode = 'title';
@@ -904,6 +1506,7 @@
     updateTopbar();
     updateBottom();
     updatePanel(false);
+    updatePlacebar();
     updateThreat();
     defenseHudUpdate();
     if (G.mode === 'raid') updateBattleHud();
@@ -911,11 +1514,9 @@
   };
 
   // ---------------------------------------------------------------- actions
-  const ACT = {
-    build: function () { if (G.mode !== 'village') { UI.toast('Not while raiders are attacking your base', 'bad'); return; } UI.open('build'); },
-    tab: function (el) { UI.tab = el.dataset.tab; renderModal(); CS.Audio.play('click'); },
-    buildType: function (el) { if (G.build(el.dataset.type)) UI.close(); },
-    edit: function () { G.toggleEdit(); },
+  Object.assign(ACT, {
+    build: function () { if (G.mode !== 'village') { UI.toast('Not while raiders are attacking your base', 'bad', 'shield'); return; } UI.open('build'); },
+    edit: function () { G.toggleEdit(); updateBottom(); },
     collect: function () { G.collectAll(); },
     collectOne: function () { const b = CS.Base.find(G.state, G.sel); if (b) Eco.collect(G.state, b); UI.refresh(true); },
     repairAll: function () { G.repairAll(); },
@@ -925,8 +1526,6 @@
     log: function () { UI.open('log'); },
     stats: function () { UI.open('log'); },
     settings: function () { UI.open('settings'); },
-    help: function () { UI.open('help'); },
-    close: function () { UI.close(); },
     closePanel: function () { G.select(null); },
     upgrade: function () { G.upgrade(G.sel); },
     wallsUp: function (el) { G.upgradeWalls(Number(el.dataset.level)); },
@@ -936,22 +1535,6 @@
       const id = G.sel;
       UI.confirm({ title: 'Cancel?', text: 'Stop this construction and get half of its cost back?', yes: 'Cancel it', no: 'Keep building', danger: true }, function () { G.cancelTimer(id); });
     },
-    train: function (el) { G.train(el.dataset.type, Number(el.dataset.n)); },
-    untrain: function (el) { G.untrain(Number(el.dataset.i)); },
-    doResearch: function (el) { G.research(el.dataset.key); },
-    cancelResearch: function () { UI.confirm({ title: 'Cancel research?', text: 'Stop the current research and get half of its cost back?', yes: 'Cancel it', no: 'Keep going', danger: true }, function () { G.cancelResearch(); UI.open('research'); }); },
-    node: function (el) { UI.worldSel = el.dataset.id; renderModal(); CS.Audio.play('click'); },
-    attack: function (el) { G.startRaid(el.dataset.id); },
-    troop: function (el) { G.selectTroop(el.dataset.type); },
-    speed: function () { G.toggleSpeed(); defenseHudUpdate(); },
-    endBattle: function () {
-      const b = G.battle;
-      if (!b) return;
-      if (b.deployedAny) UI.confirm({ title: 'End the battle?', text: 'Your troops stop fighting and the result is counted now. Survivors come home.', yes: 'End battle', danger: true }, function () { G.endBattle(); });
-      else G.endBattle();
-    },
-    skipDefense: function () { G.skipDefense(); },
-    home: function () { UI.onClose = null; UI.close(); G.goHome(); },
     place: function () { G.confirmPlace(); },
     rotate: function () { G.rotatePlace(); },
     cancelPlace: function () { G.cancelPlace(); },
@@ -959,24 +1542,9 @@
     titleNew: function () {
       UI.confirm({ title: 'Start over?', text: 'This erases your current settlement and all progress. This cannot be undone.', yes: 'Erase and start over', danger: true }, function () { G.newGame(); G.play(); });
     },
-    setting: function (el) { G.setSetting(el.dataset.key, !G.state.settings[el.dataset.key]); CS.Audio.play('click'); },
-    raidMode: function (el) { G.setSetting('raidMode', el.dataset.v); CS.Audio.play('click'); },
-    saveNow: function () { const ok = G.save(); UI.toast(ok ? 'Game saved' : 'Saving failed. Storage may be full or blocked.', ok ? 'good' : 'bad'); renderModal(); },
-    resetGame: function () {
-      UI.confirm({ title: 'Start a new game?', text: 'Your settlement, army and progress will be erased for good.', yes: 'Erase everything', danger: true }, function () {
-        setTimeout(function () {
-          UI.confirm({ title: 'Really erase?', text: 'Last chance. There is no way to recover the old settlement afterwards.', yes: 'Yes, start over', danger: true }, function () { G.newGame(); });
-        }, 0);
-      });
-    },
-    confirmYes: function () { const f = UI._confirm; UI._confirm = null; UI.close(); if (f) f(); },
-    confirmNo: function () { UI._confirm = null; UI.close(); },
-    awayCollect: function () { G.collectAll(); UI.close(); },
-    defRepair: function () { G.repairAll(); renderModal(); },
     tutNext: function () { CS.Tutorial.next(); },
     tutSkip: function () { CS.Tutorial.skip(); }
-  };
-  UI.ACT = ACT;
+  });
 
   UI.init = function (game) {
     G = game;
@@ -984,7 +1552,7 @@
     $('side').innerHTML = sideHtml();
     $('bottom').innerHTML = bottomHtml();
     $('battlehud').innerHTML = battleHudHtml();
-    $('defhud').innerHTML = '<div class="dh-l">' + ic('warn') + '<div><b id="dhName"></b><small id="dhInfo"></small></div></div><button class="cbtn" data-act="speed" id="dhSpeed" data-tip="Battle speed <kbd>F</kbd>">' + ICON.speed + '<b>1x</b></button><button class="sbtn" data-act="skipDefense" data-tip="Resolve the rest of the fight instantly">Skip</button>';
+    $('defhud').innerHTML = defHudHtml();
     document.addEventListener('click', function (e) {
       const el = e.target.closest('[data-act]');
       if (!el || el.disabled) return;
@@ -1008,6 +1576,7 @@
     document.addEventListener('change', function (e) {
       if (e.target.dataset && e.target.dataset.range === 'volume') G.save();
     });
+    window.addEventListener('resize', measureInsets);
     initTooltips();
   };
 

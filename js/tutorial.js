@@ -10,14 +10,14 @@
 
   const STEPS = [
     { text: 'Welcome, Commander! This is your settlement. Drag to look around, and scroll or pinch to zoom.', next: true },
-    { text: 'Your Credit Mint and Energy Well have been busy. Tap one of them, or press Collect, to gather what they made.', target: '[data-act="collect"]', on: 'collected' },
+    { text: 'Your Credit Mint and Energy Well have been busy. Tap one of them, or press Collect, to gather what they made.', target: '#bottom [data-act="collect"]', on: 'collected' },
     {
       text: 'Raiders will come once your protection runs out. Open Build, pick a Blaster Turret from the Defense tab and place it near your Command Core.',
-      target: '[data-act="build"]', on: 'build:placed', when: function (d) { return d.type === 'blaster'; },
+      target: '#bottom [data-act="build"]', on: 'build:placed', when: function (d) { return d.type === 'blaster'; },
       skip: function (st) { return st.base.buildings.some(function (b) { return b.type === 'blaster'; }); }
     },
-    { text: 'Construction takes time and each Engineer handles one job. Meanwhile, open Army and train a few more troops.', target: '[data-act="army"]', on: 'train:queued' },
-    { text: 'Ready to fight? Open the World Map and attack Mossy Hollow, a lightly defended camp nearby.', target: '[data-act="world"]', on: 'raid:start' },
+    { text: 'Construction takes time and each Engineer handles one job. Meanwhile, open Army and train a few more troops.', target: '#side [data-act="army"]', on: 'train:queued' },
+    { text: 'Ready to fight? Open the World Map and attack Mossy Hollow, a lightly defended camp nearby.', target: '#side [data-act="world"]', on: 'raid:start' },
     { text: 'Pick a troop at the bottom and tap the ground outside the red zone. Hold to send a stream. Destroy half the buildings or the Command Core to win.', mode: 'raid', target: '.bh-troops', on: 'raid:deploy' },
     { text: 'Loot goes to your storages and surviving troops come home. Upgrade the Command Core to unlock more buildings and land. Good luck, Commander!', next: true, last: true }
   ];

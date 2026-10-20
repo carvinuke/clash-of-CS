@@ -12,14 +12,14 @@
   <canvas id="view" aria-label="Game view"></canvas>
 
   <div id="hud" class="hidden">
-    <div id="topbar"></div>
+    <div id="topbar" data-inset="t"></div>
     <div id="threat"></div>
-    <div id="side"></div>
-    <div id="bottom"></div>
+    <nav id="side" data-inset="r" aria-label="Menus"></nav>
+    <div id="bottom" data-inset="b"></div>
     <div id="panel" class="hidden"></div>
     <div id="placebar" class="hidden"></div>
   </div>
-  <div id="defhud" class="hidden"></div>
+  <div id="defhud" class="hidden" data-inset="t"></div>
   <div id="battlehud" class="hidden"></div>
   <div id="coach" class="hidden"></div>
   <div id="modal" class="hidden"><div class="mbox"></div></div>
@@ -42,6 +42,7 @@
   <script src="js/threat.js"></script>
   <script src="js/timesys.js"></script>
   <script src="js/audio.js"></script>
+  <script src="js/icons.js"></script>
   <script src="js/sprites.js"></script>
   <script src="js/render.js"></script>
   <script src="js/ui.js"></script>
