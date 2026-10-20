@@ -441,16 +441,25 @@
   UI.measureInsets = measureInsets;
 
   // ---------------------------------------------------------------- modals
+  // One window at a time. Menus open in the space the village HUD leaves free (style.css
+  // section 5), keep keyboard focus while open and hand it back when they close.
   const MODALS = {};
+  let opener = null;   // what had focus before the window opened
 
   UI.open = function (name, arg) {
     if (G.paused && name !== 'confirm') return;
+    if (!UI.modal) opener = document.activeElement;
     UI.modal = name;
     UI.arg = arg;
-    const m = $('modal');
+    const m = $('modal'), box = m.firstElementChild;
     m.className = 'm-' + name;
+    box.setAttribute('role', 'dialog');
+    box.setAttribute('aria-modal', 'true');
+    box.setAttribute('aria-labelledby', 'mTitle');
+    box.tabIndex = -1;
     renderModal();
     m.scrollTop = 0;
+    box.focus({ preventScroll: true });
     CS.Audio.play('open');
     syncNav();
     CS.Bus.emit('ui:open', { name: name });
@@ -459,11 +468,13 @@
   UI.close = function () {
     if (!UI.modal) return;
     const m = $('modal');
-    const was = UI.modal;
+    const was = UI.modal, back = opener;
     UI.modal = null;
+    opener = null;
     m.className = 'hidden';
     m.firstElementChild.innerHTML = '';
     if (UI.onClose) { const f = UI.onClose; UI.onClose = null; f(); }
+    if (!UI.modal && back && back.isConnected) back.focus({ preventScroll: true });
     syncNav();
     CS.Bus.emit('ui:close', { name: was });
   };
@@ -480,193 +491,471 @@
     const box = $('modal').firstElementChild;
     const scroll = box.querySelector('.mbody');
     const top = scroll ? scroll.scrollTop : 0;
+    const a = document.activeElement;
+    const again = a !== box && box.contains(a) ? sameControl(a) : null;
     box.innerHTML = MODALS[UI.modal](UI.arg);
     const nb = box.querySelector('.mbody');
     if (nb) nb.scrollTop = top;
     if (UI.modal === 'world') mountMap();
+    if (again !== null) {
+      const el = again && box.querySelector(again);
+      (el && !el.disabled ? el : box).focus({ preventScroll: true });
+    }
   }
 
-  function head(title, icon, noClose) {
-    return '<div class="mh">' + (icon ? ic(icon) : '') + '<h2>' + title + '</h2>' + (noClose ? '' : '<button class="x" data-act="close" aria-label="Close">' + ICON.close + '</button>') + '</div>';
+  // The same control in the redrawn window, so keyboard focus survives the refreshes that game
+  // events trigger.
+  function sameControl(el) {
+    if (!el.dataset.act && !el.dataset.range) return '';
+    let s = el.tagName;
+    Object.keys(el.dataset).forEach(function (k) {
+      if (k !== 'tip') s += '[data-' + k.replace(/[A-Z]/g, '-$&').toLowerCase() + '="' + CSS.escape(el.dataset[k]) + '"]';
+    });
+    return s;
+  }
+
+  // Tab and Shift+Tab cycle through the open window instead of the HUD behind it.
+  document.addEventListener('keydown', function (e) {
+    if (!UI.modal) return;
+    const box = $('modal').firstElementChild, a = document.activeElement;
+    // Enter on a focused button presses that button; otherwise the game's Enter shortcut (which
+    // answers Yes in a confirmation) would also fire on Cancel.
+    if (e.key === 'Enter' && a.tagName === 'BUTTON' && box.contains(a)) { e.stopPropagation(); return; }
+    if (e.key !== 'Tab') return;
+    const list = Array.prototype.filter.call(box.querySelectorAll('button, input'), function (el) { return !el.disabled && el.offsetParent; });
+    if (!list.length) return;
+    const first = list[0], last = list[list.length - 1];
+    const out = a === box || !box.contains(a);
+    if (e.shiftKey ? out || a === first : out || a === last) {
+      e.preventDefault();
+      (e.shiftKey ? last : first).focus();
+    }
+  });
+
+  function head(title, icon, noClose, aside) {
+    return '<div class="mh">' + (icon ? ic(icon) : '') + '<h2 id="mTitle">' + title + '</h2>' + (aside || '') +
+      (noClose ? '' : '<button class="x" data-act="close" aria-label="Close" data-tip="Close <kbd>Esc</kbd>">' + ICON.close + '</button>') + '</div>';
+  }
+
+  // A readout in a window's title bar, such as the free Engineers in the Build menu.
+  function hstat(icon, value, label, cls, tip) {
+    return '<span class="hstat ' + (cls || '') + '"' + (tip ? ' data-tip="' + tip + '"' : '') + '>' + ic(icon) + '<b>' + value + '</b><small>' + label + '</small></span>';
+  }
+
+  // Why something cannot be done now. kind: 'lock' (and what unlocks it), 'short' of a resource, 'busy'.
+  function why(text, kind, icon) {
+    return '<span class="why ' + kind + '">' + ic(icon) + '<span>' + esc(text) + '</span></span>';
+  }
+
+  function notice(icon, html, cls) {
+    return '<div class="notice' + (cls ? ' ' + cls : '') + '">' + ic(icon) + '<div>' + html + '</div></div>';
   }
 
   // ----- build menu
+  function buildCard(st, type) {
+    const def = C.buildings[type];
+    const chk = Eco.canBuild(st, type);
+    let state = 'ok', note = '';
+    if (chk.locked) { state = 'locked'; note = why(chk.reason, 'lock', 'lock'); }
+    else if (chk.maxed) { state = 'maxed'; note = why(chk.reason, 'lock', 'core'); }
+    else if (chk.short) { state = 'short'; note = why(chk.reason, 'short', 'warn'); }
+    else if (!chk.ok) { state = 'busy'; note = why(chk.reason, 'busy', 'hammer'); }
+    const time = Eco.isInstant(type, 1) ? 'Instant' : U.fmtTime(def.levels[0].time);
+    // unavailable cards stay clickable: the click explains why in an event card
+    return '<button class="bcard ' + state + '" data-act="buildType" data-type="' + type + '"' + (chk.ok ? '' : ' aria-disabled="true"') + ' data-tip="' + esc(def.desc) + '">' +
+      '<span class="bc-art">' + thumb(type, 1, null, 96) + '</span>' +
+      '<span class="bc-count">' + (chk.locked ? ic('lock') : '<b>' + chk.count + '</b>/' + chk.max) + '</span>' +
+      '<span class="bc-name">' + esc(def.name) + '</span>' +
+      '<span class="bc-meta">' + costHtml(chk.cost, st) + '<span class="time">' + ic('clock') + time + '</span></span>' + note + '</button>';
+  }
+
   MODALS.build = function () {
     const st = G.state;
-    const tabs = C.buildMenu.map(function (t) {
-      return '<button class="tab' + (UI.tab === t.id ? ' on' : '') + '" data-act="tab" data-tab="' + t.id + '">' + t.name + '</button>';
-    }).join('');
-    const tab = C.buildMenu.find(function (t) { return t.id === UI.tab; }) || C.buildMenu[0];
     const eng = Eco.engineers(st);
-    const cards = tab.items.map(function (type) {
-      const def = C.buildings[type];
-      const chk = Eco.canBuild(st, type);
-      const time = Eco.isInstant(type, 1) ? 'Instant' : U.fmtTime(def.levels[0].time);
-      let note = '';
-      if (chk.locked) note = '<div class="lock">' + ic('lock') + esc(chk.reason) + '</div>';
-      else if (chk.maxed) note = '<div class="lock">Built ' + chk.count + '/' + chk.max + '. Upgrade the Command Core for more.</div>';
-      else if (!chk.ok) note = '<div class="short">' + esc(chk.reason) + '</div>';
-      return '<button class="card' + (chk.ok ? '' : ' dis') + (chk.locked ? ' locked' : '') + '" data-act="buildType" data-type="' + type + '" data-tip="' + esc(def.desc) + '">' +
-        thumb(type, 1, null, 96) + '<div class="cn">' + esc(def.name) + '</div>' +
-        '<div class="cc">' + (chk.locked ? '' : chk.count + '/' + chk.max) + '</div>' +
-        '<div class="cp">' + costHtml(chk.cost, st) + ' <span class="time">' + ic('clock') + time + '</span></div>' + note + '</button>';
+    const tab = C.buildMenu.find(function (t) { return t.id === UI.tab; }) || C.buildMenu[0];
+    const tabs = C.buildMenu.map(function (t) {
+      return '<button class="tab' + (t === tab ? ' on' : '') + '" role="tab" aria-selected="' + (t === tab) + '" data-act="tab" data-tab="' + t.id + '">' + t.name + '</button>';
     }).join('');
-    return head('Build', 'hammer') + '<div class="tabs">' + tabs + '</div>' +
-      '<div class="mbody"><p class="hint">Engineers free: <b>' + eng.free + '/' + eng.total + '</b>. Walls, mines and new Engineering Stations finish instantly.</p><div class="cards">' + cards + '</div></div>';
+    return head('Build', 'hammer', false, hstat('hammer', eng.free + '/' + eng.total, 'Engineers free', eng.free ? '' : 'warn',
+      'Each Engineer runs one construction or upgrade at a time. Engineering Stations bring more.')) +
+      '<div class="tabs" role="tablist">' + tabs + '</div>' +
+      '<div class="mbody"><div class="bcards">' + tab.items.map(function (type) { return buildCard(st, type); }).join('') + '</div>' +
+      '<p class="hint mfoot">Walls, mines and new Engineering Stations finish instantly and need no free Engineer.</p></div>';
   };
 
   // ----- army
+  function troopCard(st, type) {
+    const T = C.troops[type];
+    const s = Army.stats(st, type);
+    const unlocked = Army.isUnlocked(st, type);
+    const heals = T.target === 'troop';
+    const tip = esc(T.desc) + '<br>HP ' + s.hp + ' &middot; ' + (heals ? 'Heals ' + s.dmg + '/s' : 'DMG ' + s.dmg + (T.suicide ? ' (x' + T.wallMult + ' vs walls)' : '')) + ' &middot; Range ' + T.range + ' &middot; Speed ' + T.speed;
+    let act;
+    if (!unlocked) act = why('Unlocks at Barracks Lv ' + Army.unlockLevel(type), 'lock', 'lock');
+    else {
+      const c1 = Army.canQueue(st, type, 1), c5 = Army.canQueue(st, type, 5);
+      const btn = function (n, c) {
+        return '<button class="sbtn" data-act="train" data-type="' + type + '" data-n="' + n + '" aria-label="Train ' + n + ' ' + esc(T.name) + '"' + (c.ok ? '' : ' disabled') + '>+' + n + '</button>';
+      };
+      act = '<span class="tk-train">' + btn(1, c1) + btn(5, c5) + '</span>' +
+        (!c1.ok ? why(c1.reason, c1.short ? 'short' : 'busy', c1.short ? 'warn' : 'army') : !c5.ok ? why('+5: ' + c5.reason, c5.short ? 'short' : 'busy', c5.short ? 'warn' : 'army') : '');
+    }
+    return '<div class="tcard' + (unlocked ? '' : ' locked') + '" data-tip="' + tip + '">' +
+      '<span class="tk-art">' + troopImg(type, null, 72) + '</span>' +
+      '<div class="tk-main"><div class="tk-head"><b class="tk-name">' + esc(T.name) + '</b><span class="lv">Lv ' + Army.level(st, type) + '</span></div>' +
+      '<div class="tk-meta">' + costHtml({ energy: s.cost }, unlocked ? st : null) + '<span class="space">' + ic('army') + T.space + '</span><span class="time">' + ic('clock') + U.fmtTime(Army.trainSeconds(st, type)) + '</span></div>' +
+      '<div class="tk-stats"><span>HP <b>' + s.hp + '</b></span><span>' + (heals ? 'Heal' : 'DMG') + ' <b>' + s.dmg + '</b></span><span>' + (T.range < 1 ? 'Melee' : 'Range <b>' + T.range + '</b>') + '</span></div>' +
+      act + '</div></div>';
+  }
+
   MODALS.army = function () {
     const st = G.state;
     const cap = Army.capacity(st), used = Army.armySpace(st), q = Army.queueSpace(st);
     const barracks = Army.activeBarracks(st);
-    const cards = C.troopOrder.map(function (type) {
-      const T = C.troops[type];
-      const s = Army.stats(st, type);
-      const unlocked = Army.isUnlocked(st, type);
-      const chk1 = Army.canQueue(st, type, 1), chk5 = Army.canQueue(st, type, 5);
-      const tip = esc(T.desc) + '<br>HP ' + s.hp + ' &middot; ' + (T.target === 'troop' ? 'Heals ' + s.dmg + '/s' : 'DMG ' + s.dmg + (T.suicide ? ' (x' + T.wallMult + ' vs walls)' : '')) + ' &middot; Range ' + T.range + ' &middot; Speed ' + T.speed;
-      return '<div class="tcard' + (unlocked ? '' : ' locked') + '" data-tip="' + tip + '">' + troopImg(type, null, 72) +
-        '<div class="tn">' + esc(T.name) + ' <span class="lv">Lv ' + Army.level(st, type) + '</span></div>' +
-        '<div class="tm">' + resIcon('energy') + U.fmt(s.cost) + ' &middot; ' + ic('army') + T.space + ' &middot; ' + U.fmtTime(Army.trainSeconds(st, type)) + '</div>' +
-        (unlocked ? '<div class="row"><button class="sbtn" data-act="train" data-type="' + type + '" data-n="1"' + (chk1.ok ? '' : ' disabled') + '>+1</button><button class="sbtn" data-act="train" data-type="' + type + '" data-n="5"' + (chk5.ok ? '' : ' disabled') + '>+5</button></div>' +
-          (chk1.ok ? '' : '<div class="short">' + esc(chk1.reason) + '</div>')
-          : '<div class="lock">' + ic('lock') + 'Barracks Lv ' + Army.unlockLevel(type) + '</div>') + '</div>';
+    const w = function (v) { return (U.clamp(v / Math.max(1, cap), 0, 1) * 100).toFixed(1) + '%'; };
+    const summary = '<div class="asum"><div class="asum-h">' + ic('army') + '<span class="lbl">Army housing</span>' +
+      (q ? '<small>+' + q + ' in training</small>' : '') + '<b>' + used + ' / ' + cap + '</b></div>' +
+      '<div class="bar army hbar"><div style="width:' + w(used) + '"></div><div class="q" style="width:' + w(Math.min(q, cap - used)) + '"></div></div>' +
+      (barracks ? '<p class="hint">' + barracks + ' working Barracks' + (barracks > 1 ? ' train ' + barracks + 'x faster.' : '.') + ' Training continues while the game is closed.</p>'
+        : why('You need a working Barracks to train troops.', 'busy', 'warn')) + '</div>';
+    const chips = C.troopOrder.filter(function (t) { return st.army.units[t] > 0; }).map(function (t) {
+      return '<span class="chipT" data-tip="' + esc(C.troops[t].name) + '">' + troopImg(t, null, 44) + '<b>' + st.army.units[t] + '</b></span>';
     }).join('');
-    const have = C.troopOrder.filter(function (t) { return st.army.units[t] > 0; }).map(function (t) {
-      return '<div class="chipT">' + troopImg(t, null, 44) + '<b>' + st.army.units[t] + '</b></div>';
-    }).join('') || '<p class="hint">No troops yet. Train some to raid enemy settlements.</p>';
-    let queue = '';
+    let queue = '<p class="hint">Nothing in training.</p>', total = '';
     if (st.army.queue.length) {
-      const head0 = st.army.queue[0];
-      const need = Army.trainSeconds(st, head0.type) / Math.max(1, barracks);
-      const left = Math.max(0, (Army.trainSeconds(st, head0.type) - st.army.progress) / Math.max(1, barracks));
-      const now = CS.Clock.now();
+      const now = CS.Clock.now(), per = Math.max(1, barracks);
+      const need = Army.trainSeconds(st, st.army.queue[0].type) / per;
+      const left = Math.max(0, (Army.trainSeconds(st, st.army.queue[0].type) - st.army.progress) / per);
       queue = st.army.queue.map(function (e, i) {
-        return '<div class="qitem">' + troopImg(e.type, null, 40) + '<b>&times;' + e.count + '</b>' +
-          (i === 0 ? (barracks ? bar(now - (need - left) * 1000, now + left * 1000, 'q') : '<small class="bad">No working Barracks</small>') : '') +
-          '<button class="xs" data-act="untrain" data-i="' + i + '" data-tip="Remove one (full refund)">' + ICON.close + '</button></div>';
-      }).join('') + '<p class="hint">All training done in ' + until(now + Army.queueRemaining(st) * 1000) + '</p>';
-    } else queue = '<p class="hint">Nothing in training.</p>';
-    return head('Army', 'army') + '<div class="mbody army">' +
-      '<div class="capline">' + ic('army') + 'Housing <b>' + used + (q ? ' + ' + q : '') + ' / ' + cap + '</b>' + staticBar((used + q) / Math.max(1, cap), 'army') + '</div>' +
-      '<p class="hint">' + (barracks ? barracks + ' working Barracks' + (barracks > 1 ? ' train ' + barracks + 'x faster.' : '.') + ' Training continues while the game is closed.' : 'You need a working Barracks to train troops.') + '</p>' +
-      '<div class="tcards">' + cards + '</div>' +
-      '<div class="cols"><div><h4>Your army</h4><div class="chips">' + have + '</div></div><div><h4>Training</h4>' + queue + '</div></div></div>';
+        const name = esc(C.troops[e.type].name);
+        let prog = '';
+        if (i === 0) prog = barracks ? '<span class="qnext">Next in ' + until(now + left * 1000) + '</span>' + bar(now - (need - left) * 1000, now + left * 1000, 'q') : why('No working Barracks', 'busy', 'warn');
+        return '<div class="qrow">' + troopImg(e.type, null, 40) + '<div class="qmain"><span class="qname"><b>' + e.count + '&times;</b> ' + name + '</span>' + prog + '</div>' +
+          '<button class="xs" data-act="untrain" data-i="' + i + '" aria-label="Remove one ' + name + '" data-tip="Remove one (full refund)">' + ICON.close + '</button></div>';
+      }).join('');
+      total = barracks ? '<span class="h4side">All done in <b>' + until(now + Army.queueRemaining(st) * 1000) + '</b></span>' : '<span class="h4side">Paused until a Barracks is working</span>';
+    }
+    return head('Army', 'army') + '<div class="mbody">' + summary +
+      '<h4>Train troops</h4><div class="tcards">' + C.troopOrder.map(function (t) { return troopCard(st, t); }).join('') + '</div>' +
+      '<div class="acols"><section><div class="h4row"><h4>Your army</h4><span class="h4side"><b>' + Army.totalUnits(st) + '</b> troops</span></div>' +
+      (chips ? '<div class="chips">' + chips + '</div>' : '<p class="hint">No troops yet. Train some to raid enemy settlements.</p>') + '</section>' +
+      '<section><div class="h4row"><h4>Training</h4>' + total + '</div>' + queue + '</section></div></div>';
   };
 
   // ----- research
+  const TECH_ICON = { plating: 'shield', targeting: 'target', extraction: 'pick', compression: 'crate', drills: 'bolt' };
+
+  function gain(v) { return v == null ? '' : ' <span class="gain">&rarr; ' + v + '</span>'; }
+
+  function researchArt(key) {
+    return '<span class="r-art">' + (C.troops[key] ? troopImg(key, null, 48) : ic(TECH_ICON[key] || 'flask')) + '</span>';
+  }
+
+  function researchRow(st, d) {
+    const chk = CS.Research.canStart(st, d.key);
+    let effect;
+    if (d.kind === 'troop') {
+      const a = Army.stats(st, d.key, d.level), b = d.maxed ? null : Army.stats(st, d.key, d.level + 1);
+      effect = 'HP ' + a.hp + gain(b && b.hp) + ' &middot; ' + (C.troops[d.key].target === 'troop' ? 'Heal ' : 'DMG ') + a.dmg + gain(b && b.dmg);
+    } else {
+      const per = C.research.techs[d.key].per;
+      effect = esc(d.desc) + ' +' + Math.round(d.level * per * 100) + '%' + gain(d.maxed ? null : '+' + Math.round((d.level + 1) * per * 100) + '%');
+    }
+    let side;
+    if (d.maxed) side = '<span class="rmax">' + ic('star') + 'Max level</span>';
+    else {
+      const cost = {}; cost[d.res] = d.cost;
+      side = '<span class="rcost">' + costHtml(cost, st) + '<span class="time">' + ic('clock') + U.fmtTime(d.time) + '</span></span>' +
+        '<button class="sbtn" data-act="doResearch" data-key="' + d.key + '"' + (chk.ok ? '' : ' disabled') + ' aria-label="Research ' + esc(d.name) + ' level ' + (d.level + 1) + '" data-tip="' + esc(chk.ok ? 'Start research' : chk.reason) + '">' + ic('up') + 'Lv ' + (d.level + 1) + '</button>';
+    }
+    const note = d.locked ? why(d.locked, 'lock', 'lock') : chk.short ? why(chk.reason, 'short', 'warn') : '';
+    return '<div class="rrow' + (d.locked ? ' locked' : '') + (d.maxed ? ' done' : '') + '">' + researchArt(d.key) +
+      '<div class="r-main"><div class="r-head"><b class="r-name">' + esc(d.name) + '</b><span class="lv">Lv ' + d.level + '/' + d.max + '</span></div>' +
+      '<span class="r-eff">' + effect + '</span>' + note + '</div><div class="r-side">' + side + '</div></div>';
+  }
+
   MODALS.research = function () {
     const st = G.state;
     const lab = CS.Research.lab(st);
     const ra = st.research.active;
-    let top = '';
-    if (!lab) top = '<div class="notice">' + ic('info') + 'Build a Research Lab to unlock research' + (Base.unlockCore('lab') > Base.coreLevel(st) ? ' (available at Command Core Lv ' + Base.unlockCore('lab') + ')' : ' from the Build menu') + '.</div>';
+    let top;
     if (ra) {
       const d = CS.Research.describe(st, ra.key);
-      top += '<div class="active-r">' + ic('flask') + '<div><b>' + esc(d.name) + ' Lv ' + (d.level + 1) + '</b> ' + until(ra.end) + bar(ra.start, ra.end) + '</div><button class="sbtn danger" data-act="cancelResearch">Cancel</button></div>';
-    }
-    function rowHtml(d) {
-      let effect = '';
-      if (d.kind === 'troop') {
-        const a = Army.stats(st, d.key, d.level), b = d.maxed ? null : Army.stats(st, d.key, d.level + 1);
-        effect = 'HP ' + a.hp + (b ? ' &rarr; ' + b.hp : '') + ', ' + (C.troops[d.key].target === 'troop' ? 'heal ' : 'DMG ') + a.dmg + (b ? ' &rarr; ' + b.dmg : '');
-      } else {
-        const per = C.research.techs[d.key].per;
-        effect = esc(d.desc) + ' +' + Math.round(d.level * per * 100) + '%' + (d.maxed ? '' : ' &rarr; +' + Math.round((d.level + 1) * per * 100) + '%');
-      }
-      const chk = CS.Research.canStart(st, d.key);
-      const cost = {}; if (d.cost) cost[d.res] = d.cost;
-      return '<div class="rrow' + (d.locked ? ' locked' : '') + '">' + (d.kind === 'troop' ? troopImg(d.key, null, 48) : '<span class="techic">' + ICON.flask + '</span>') +
-        '<div class="rinfo"><b>' + esc(d.name) + '</b> <span class="lv">Lv ' + d.level + '/' + d.max + '</span><small>' + effect + '</small></div>' +
-        (d.maxed ? '<div class="maxed">Max</div>' : '<div class="ract"><button class="sbtn" data-act="doResearch" data-key="' + d.key + '"' + (chk.ok ? '' : ' disabled') + ' data-tip="' + esc(chk.ok ? 'Start research' : chk.reason) + '">' + costHtml(cost, st) + ' ' + ic('clock') + U.fmtTime(d.time) + '</button>' + (d.locked ? '<small class="bad">' + esc(d.locked) + '</small>' : '') + '</div>') + '</div>';
-    }
+      top = '<div class="ractive">' + researchArt(ra.key) + '<div class="ra-main"><span class="lbl">Researching</span>' +
+        '<span class="r-head"><b class="r-name">' + esc(d.name) + '</b><span class="lv">Lv ' + (d.level + 1) + '</span></span>' + bar(ra.start, ra.end, 'q') + '</div>' +
+        '<div class="ra-side"><span class="time">' + ic('clock') + until(ra.end) + '</span>' +
+        '<button class="sbtn danger" data-act="cancelResearch" data-tip="Stop and get half of the cost back">' + ic('close') + 'Cancel</button></div></div>';
+    } else if (!lab) top = notice('info', 'Build a Research Lab to unlock research' + (Base.unlockCore('lab') > Base.coreLevel(st) ? ' (available at Command Core Lv ' + Base.unlockCore('lab') + ')' : ' from the Build menu') + '.');
+    else if (!Base.isFunctional(lab)) top = notice('warn', (lab.ruined ? 'The Research Lab is in ruins.' : 'The Research Lab is being upgraded.') + ' New research can start once it is working again.', 'warn');
+    else top = '<div class="ractive idle">' + ic('flask') + '<span>The lab is free. Pick an upgrade below.</span></div>';
     const list = CS.Research.list(st);
-    return head('Research Lab', 'flask') + '<div class="mbody">' + top +
-      '<h4>Troop training</h4>' + list.filter(function (d) { return d.kind === 'troop'; }).map(rowHtml).join('') +
-      '<h4>Settlement technology</h4>' + list.filter(function (d) { return d.kind === 'tech'; }).map(rowHtml).join('') + '</div>';
+    const rows = function (kind) { return list.filter(function (d) { return d.kind === kind; }).map(function (d) { return researchRow(st, d); }).join(''); };
+    return head('Research Lab', 'flask', false, lab ? hstat('flask', 'Lv ' + lab.level, 'Research Lab', '', 'A higher lab level unlocks higher research levels.') : '') +
+      '<div class="mbody">' + top + '<h4>Troop training</h4>' + rows('troop') + '<h4>Settlement technology</h4>' + rows('tech') + '</div>';
   };
 
   // ----- world map
-  let mapCanvas = null;
+  // The map is painted in code once per shape and per revealed tier, then reused: the ground
+  // palettes of the battlefields, ink borders between territories, landmarks, roads, and
+  // hatched fog over the tiers the player has not reached yet.
   const HOME_POS = [0.5, 0.93];
-  const BIOME_COL = { meadow: [124, 186, 74], desert: [226, 192, 120], swamp: [108, 136, 70], snow: [228, 238, 246], volcanic: [104, 76, 66] };
+  const MAP_INK = '#2b1e12';
+  const maps = {};
 
-  function drawMap() {
-    const W = 600, H = 440, R = 3;
-    const c = document.createElement('canvas');
-    c.width = W; c.height = H;
-    const g = c.getContext('2d');
-    const lw = W / R, lh = H / R;
-    const img = g.createImageData(lw, lh);
-    const pts = C.settlements.map(function (s) { return { x: s.pos[0], y: s.pos[1], col: BIOME_COL[C.factions[s.faction].biome] }; });
-    pts.push({ x: HOME_POS[0], y: HOME_POS[1], col: [142, 204, 92] });
-    for (let y = 0; y < lh; y++) {
-      for (let x = 0; x < lw; x++) {
-        const fx = x / lw + Math.sin(y * 0.21) * 0.012 + Math.sin(x * 0.13 + y * 0.07) * 0.01;
-        const fy = y / lh + Math.cos(x * 0.17) * 0.012;
-        let best = null, bd = Infinity, second = Infinity;
-        pts.forEach(function (p) {
-          const d = (p.x - fx) * (p.x - fx) * 1.4 + (p.y - fy) * (p.y - fy);
-          if (d < bd) { second = bd; bd = d; best = p; } else if (d < second) second = d;
-        });
-        const edge = Math.sqrt(second) - Math.sqrt(bd) < 0.012;
-        const n = (Math.sin(x * 0.9) * Math.cos(y * 1.1) + Math.sin((x + y) * 0.37)) * 6;
-        const i = (y * lw + x) * 4;
-        const k = edge ? 0.82 : 1;
-        img.data[i] = best.col[0] * k + n; img.data[i + 1] = best.col[1] * k + n; img.data[i + 2] = best.col[2] * k + n; img.data[i + 3] = 255;
+  function hexRgb(h) { const n = parseInt(h.slice(1), 16); return [n >> 16, n >> 8 & 255, n & 255]; }
+
+  // Smooth value noise on a wrapping n x n lattice.
+  function valueNoise(seed, n) {
+    const rng = new U.Rng(seed), v = new Float32Array(n * n);
+    for (let i = 0; i < v.length; i++) v[i] = rng.next();
+    return function (x, y) {
+      const xi = Math.floor(x), yi = Math.floor(y);
+      let fx = x - xi, fy = y - yi;
+      fx = fx * fx * (3 - 2 * fx); fy = fy * fy * (3 - 2 * fy);
+      const x0 = (xi % n + n) % n, y0 = (yi % n + n) % n, x1 = (x0 + 1) % n, y1 = (y0 + 1) % n;
+      const a = v[y0 * n + x0], b = v[y0 * n + x1], c = v[y1 * n + x0], d = v[y1 * n + x1];
+      return a + (b - a) * fx + (c - a) * fy + (a - b - c + d) * fx * fy;
+    };
+  }
+
+  // Roads: each settlement links to the nearest one of the tier before it (tier 1 to home).
+  function mapRoads(aspect, maxTier) {
+    return C.settlements.map(function (s) {
+      const prev = s.tier === 1 ? [{ pos: HOME_POS }] : C.settlements.filter(function (o) { return o.tier === s.tier - 1; });
+      let from = prev[0], best = Infinity;
+      prev.forEach(function (o) { const d = U.dist(o.pos[0], o.pos[1], s.pos[0], s.pos[1]); if (d < best) { best = d; from = o; } });
+      const ax = from.pos[0] * aspect, ay = from.pos[1], bx = s.pos[0] * aspect, by = s.pos[1];
+      const bend = U.hash(s.id) & 1 ? 0.14 : -0.14;
+      const cx = (ax + bx) / 2 - (by - ay) * bend, cy = (ay + by) / 2 + (bx - ax) * bend;
+      const pts = [];
+      for (let i = 0; i <= 16; i++) {
+        const t = i / 16, k = 1 - t;
+        pts.push([k * k * ax + 2 * k * t * cx + t * t * bx, k * k * ay + 2 * k * t * cy + t * t * by]);
+      }
+      return { ax: ax, ay: ay, cx: cx, cy: cy, bx: bx, by: by, pts: pts, fog: s.tier > maxTier };
+    });
+  }
+
+  function drawMap(aspect, maxTier) {
+    const H = 760, W = Math.round(H * aspect);
+    const cv = document.createElement('canvas');
+    cv.width = W; cv.height = H;
+    const g = cv.getContext('2d');
+    const BIO = CS.Render.BIOMES;
+    // one territory per settlement plus the player's home; coordinates in map heights
+    const sites = C.settlements.map(function (s) { return { x: s.pos[0] * aspect, y: s.pos[1], biome: C.factions[s.faction].biome, fog: s.tier > maxTier }; });
+    sites.push({ x: HOME_POS[0] * aspect, y: HOME_POS[1], biome: 'home', fog: false });
+    const n = sites.length;
+    const sx = new Float64Array(n), sy = new Float64Array(n), span = new Float64Array(n * n);
+    sites.forEach(function (p, i) { sx[i] = p.x; sy[i] = p.y; });
+    for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) span[i * n + j] = 2 * Math.hypot(sx[i] - sx[j], sy[i] - sy[j]);
+    const pal = sites.map(function (p) { const b = BIO[p.biome]; return [hexRgb(b.wild), hexRgb(b.lush), hexRgb(b.dry), hexRgb(b.bg)]; });
+    const nz = valueNoise(7, 64);
+    const WARP = 0.05;
+    function nearest(u, v) {
+      const wu = u + (nz(u * 7, v * 7) - 0.5) * WARP, wv = v + (nz(u * 7 + 23, v * 7 + 41) - 0.5) * WARP;
+      let d1 = 1e9, a = 0;
+      for (let k = 0; k < n; k++) { const dx = sx[k] - wu, dy = sy[k] - wv, dd = dx * dx + dy * dy; if (dd < d1) { d1 = dd; a = k; } }
+      return a;
+    }
+
+    // ---- ground, territory borders and fog, pixel by pixel
+    const img = g.createImageData(W, H), px = img.data;
+    for (let y = 0; y < H; y++) {
+      const v = y / H;
+      for (let x = 0; x < W; x++) {
+        const u = x / H;
+        const wu = u + (nz(u * 7, v * 7) - 0.5) * WARP, wv = v + (nz(u * 7 + 23, v * 7 + 41) - 0.5) * WARP;
+        let d1 = 1e9, d2 = 1e9, a = 0, b = 0;
+        for (let k = 0; k < n; k++) {
+          const dx = sx[k] - wu, dy = sy[k] - wv, dd = dx * dx + dy * dy;
+          if (dd < d1) { d2 = d1; b = a; d1 = dd; a = k; } else if (dd < d2) { d2 = dd; b = k; }
+        }
+        const e = (d2 - d1) / span[a * n + b];   // distance to the border with the next territory
+        const P = pal[a], other = sites[a].biome !== sites[b].biome;
+        // large lush and dry patches, as on the battlefields
+        const m = nz(u * 3 + 11, v * 3 + 5);
+        const to = m < 0.42 ? P[1] : P[2];
+        let t = m < 0.42 ? Math.min(1, (0.42 - m) * 3.2) : m > 0.6 ? Math.min(1, (m - 0.6) * 3.2) : 0;
+        t *= 0.8;
+        let r = P[0][0] + (to[0] - P[0][0]) * t, gr = P[0][1] + (to[1] - P[0][1]) * t, bl = P[0][2] + (to[2] - P[0][2]) * t;
+        // painterly mottling and a little paper grain
+        const f = (nz(u * 40 + 3, v * 40 + 7) - 0.5) * 14 + ((x * 7919 ^ y * 104729) & 7) - 3.5;
+        r += f; gr += f; bl += f;
+        // a darker wash along the border, then the ink line itself (dotted inside one biome)
+        const band = other ? 0.03 : 0.016;
+        if (e < band) {
+          t = 1 - e / band; t = t * t * (other ? 0.42 : 0.22);
+          r += (P[3][0] - r) * t; gr += (P[3][1] - gr) * t; bl += (P[3][2] - bl) * t;
+        }
+        t = ((other ? 0.0021 : 0.0013) - e) * H + 0.5;
+        if (t > 0 && (other || (x + y) >> 2 & 1)) {
+          t = Math.min(1, t) * (other ? 0.82 : 0.5);
+          r += (43 - r) * t; gr += (30 - gr) * t; bl += (18 - bl) * t;
+        }
+        // unexplored tiers: faded toward parchment and hatched
+        if (sites[a].fog) {
+          const l = r * 0.3 + gr * 0.55 + bl * 0.15;
+          r = l * 0.5 + 84; gr = l * 0.5 + 76; bl = l * 0.5 + 60;
+          if (((x - y) % 10 + 10) % 10 < 1.5) { r *= 0.84; gr *= 0.84; bl *= 0.84; }
+        }
+        // the sheet darkens slightly toward its edges
+        const ed = Math.min(u, aspect - u, v, 1 - v);
+        if (ed < 0.05) { t = 1 - ed / 0.05; t = t * t * 0.38; r -= r * t; gr -= gr * t; bl -= bl * t; }
+        const i = (y * W + x) * 4;
+        px[i] = r; px[i + 1] = gr; px[i + 2] = bl; px[i + 3] = 255;
       }
     }
-    const tmp = document.createElement('canvas');
-    tmp.width = lw; tmp.height = lh;
-    tmp.getContext('2d').putImageData(img, 0, 0);
-    g.imageSmoothingEnabled = true;
-    g.drawImage(tmp, 0, 0, W, H);
-    // sea border and vignette
-    const v = g.createRadialGradient(W / 2, H / 2, H * 0.35, W / 2, H / 2, H * 0.8);
-    v.addColorStop(0, 'rgba(0,0,0,0)'); v.addColorStop(1, 'rgba(10,30,60,0.55)');
-    g.fillStyle = v; g.fillRect(0, 0, W, H);
-    // roads: each settlement links to the closest one of the previous tier
-    g.strokeStyle = 'rgba(92,62,30,0.75)'; g.lineWidth = 3; g.setLineDash([7, 6]);
-    C.settlements.forEach(function (s) {
-      let best = null, bd = Infinity;
-      const prev = s.tier === 1 ? [{ pos: HOME_POS }] : C.settlements.filter(function (o) { return o.tier === s.tier - 1; });
-      prev.forEach(function (o) { const d = U.dist(o.pos[0], o.pos[1], s.pos[0], s.pos[1]); if (d < bd) { bd = d; best = o; } });
+    g.putImageData(img, 0, 0);
+
+    // ---- landmarks: ink-outlined like the rest of the art, lit from the upper left
+    g.lineJoin = 'round'; g.lineCap = 'round';
+    function ink(w) { g.strokeStyle = MAP_INK; g.lineWidth = w || 1.6; g.stroke(); }
+    function tri(x0, y0, x1, y1, x2, y2) { g.beginPath(); g.moveTo(x0, y0); g.lineTo(x1, y1); g.lineTo(x2, y2); g.closePath(); }
+    function dot(x, y, r) { g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); }
+    function tree(x, y, s, col) {
+      g.fillStyle = '#6b4a2f'; g.fillRect(x - 1.2 * s, y - 5 * s, 2.4 * s, 5 * s);
+      dot(x, y - 8.5 * s, 5.8 * s); g.fillStyle = col; g.fill(); ink();
+      dot(x - 2.2 * s, y - 10.6 * s, 2 * s); g.fillStyle = Spr.shade(col, 0.22); g.fill();
+    }
+    function pine(x, y, s, col, snow) {
+      g.fillStyle = '#6b4a2f'; g.fillRect(x - s, y - 3 * s, 2 * s, 3 * s);
+      tri(x - 6.5 * s, y - 2.5 * s, x, y - 18 * s, x + 6.5 * s, y - 2.5 * s); g.fillStyle = col; g.fill(); ink();
+      if (snow) { tri(x - 2.8 * s, y - 11.5 * s, x, y - 18 * s, x + 2.8 * s, y - 11.5 * s); g.fillStyle = '#f3f7fa'; g.fill(); }
+    }
+    function peak(x, y, s, body, cap) {
+      const w = 13 * s, h = 19 * s;
+      tri(x - w, y, x, y - h, x + w, y); g.fillStyle = body; g.fill();
+      tri(x, y - h, x + w, y, x + 2 * s, y); g.fillStyle = Spr.shade(body, -0.24); g.fill();
+      if (cap) {
+        g.beginPath(); g.moveTo(x - w * 0.4, y - h * 0.6); g.lineTo(x, y - h); g.lineTo(x + w * 0.4, y - h * 0.6);
+        g.lineTo(x + w * 0.14, y - h * 0.52); g.lineTo(x - w * 0.08, y - h * 0.64); g.closePath(); g.fillStyle = cap; g.fill();
+      }
+      g.beginPath(); g.moveTo(x - w, y); g.lineTo(x, y - h); g.lineTo(x + w, y); ink();
+    }
+    function volcano(x, y, s) {
+      const w = 24 * s, h = 27 * s, top = 5 * s;
+      g.beginPath(); g.moveTo(x - w, y); g.lineTo(x - top, y - h); g.lineTo(x + top, y - h); g.lineTo(x + w, y); g.closePath(); g.fillStyle = '#5a4d47'; g.fill();
+      tri(x + top, y - h, x + w, y, x + 3 * s, y); g.fillStyle = '#3d3431'; g.fill();
+      g.beginPath(); g.moveTo(x - 1.5 * s, y - h); g.lineTo(x - 4 * s, y - h * 0.62); g.lineTo(x - 1 * s, y - h * 0.46); g.lineTo(x - 6 * s, y - h * 0.12);
+      g.strokeStyle = '#ff7a2e'; g.lineWidth = 2.4 * s; g.stroke();
+      g.beginPath(); g.ellipse(x, y - h, top, 1.8 * s, 0, 0, Math.PI * 2); g.fillStyle = '#ffa04a'; g.fill(); ink(1.3);
+      g.beginPath(); g.moveTo(x - w, y); g.lineTo(x - top, y - h); g.moveTo(x + top, y - h); g.lineTo(x + w, y); ink();
+    }
+    function dune(x, y, s) {
+      g.beginPath(); g.moveTo(x - 12 * s, y); g.quadraticCurveTo(x - 3 * s, y - 9 * s, x + 12 * s, y); g.quadraticCurveTo(x, y - 3 * s, x - 12 * s, y);
+      g.fillStyle = 'rgba(255, 243, 214, 0.4)'; g.fill();
+      g.beginPath(); g.moveTo(x - 12 * s, y); g.quadraticCurveTo(x - 3 * s, y - 9 * s, x + 12 * s, y); ink(1.3);
+    }
+    function cactus(x, y, s) {
+      const path = function () {
+        g.beginPath(); g.moveTo(x, y); g.lineTo(x, y - 12 * s);
+        g.moveTo(x, y - 6 * s); g.lineTo(x - 4 * s, y - 6 * s); g.lineTo(x - 4 * s, y - 9.5 * s);
+        g.moveTo(x, y - 4 * s); g.lineTo(x + 4 * s, y - 4 * s); g.lineTo(x + 4 * s, y - 8 * s);
+      };
+      path(); g.strokeStyle = MAP_INK; g.lineWidth = 5.2 * s; g.stroke();
+      path(); g.strokeStyle = '#79a64f'; g.lineWidth = 2.8 * s; g.stroke();
+    }
+    function rock(x, y, s, col) {
+      g.beginPath(); g.moveTo(x - 6 * s, y); g.lineTo(x - 4 * s, y - 4.5 * s); g.lineTo(x + 1 * s, y - 6 * s); g.lineTo(x + 5.5 * s, y - 2.5 * s); g.lineTo(x + 5 * s, y); g.closePath();
+      g.fillStyle = col; g.fill(); ink(1.3);
+    }
+    function reeds(x, y, s) {
       g.beginPath();
-      g.moveTo(best.pos[0] * W, best.pos[1] * H);
-      g.quadraticCurveTo((best.pos[0] + s.pos[0]) / 2 * W + 18, (best.pos[1] + s.pos[1]) / 2 * H, s.pos[0] * W, s.pos[1] * H);
-      g.stroke();
+      for (let i = -1; i <= 1; i++) { g.moveTo(x + i * 2.6 * s, y); g.lineTo(x + i * 4 * s, y - (i ? 8 : 11) * s); }
+      g.strokeStyle = '#334a20'; g.lineWidth = 1.7 * s; g.stroke();
+    }
+    function pond(x, y, s) {
+      g.beginPath(); g.ellipse(x, y, 13 * s, 5.5 * s, 0, 0, Math.PI * 2); g.fillStyle = '#5d8c84'; g.fill(); ink(1.4);
+      g.beginPath(); g.moveTo(x - 7 * s, y - 1.6 * s); g.lineTo(x - 1.5 * s, y - 1.6 * s); g.strokeStyle = 'rgba(255, 255, 255, 0.5)'; g.lineWidth = 1.4; g.stroke();
+    }
+    function snag(x, y, s) {
+      g.beginPath(); g.moveTo(x, y); g.lineTo(x, y - 12 * s); g.moveTo(x, y - 6 * s); g.lineTo(x - 4.5 * s, y - 10.5 * s); g.moveTo(x, y - 8.5 * s); g.lineTo(x + 4 * s, y - 12.5 * s);
+      g.strokeStyle = '#2a211d'; g.lineWidth = 2.2 * s; g.stroke();
+    }
+    function lava(x, y, s) {
+      g.beginPath(); g.moveTo(x - 8 * s, y); g.lineTo(x - 3 * s, y - 2 * s); g.lineTo(x + 1 * s, y + 1 * s); g.lineTo(x + 7 * s, y - 1.5 * s);
+      g.strokeStyle = MAP_INK; g.lineWidth = 3.6 * s; g.stroke(); g.strokeStyle = '#ff8a3d'; g.lineWidth = 1.8 * s; g.stroke();
+    }
+    const GLYPH = {
+      home: function (x, y, r, s) { if (r < 0.5) tree(x, y, s, r < 0.25 ? '#4e9a3c' : '#559f3f'); else if (r < 0.62) pine(x, y, s, '#2f7a45'); },
+      meadow: function (x, y, r, s) { if (r < 0.5) tree(x, y, s, r < 0.25 ? '#4e9a3c' : '#4a9440'); else if (r < 0.66) pine(x, y, s, '#2f7a45'); else if (r < 0.72) rock(x, y, s, '#a29a8c'); },
+      swamp: function (x, y, r, s) { if (r < 0.3) tree(x, y, s, '#5d7f39'); else if (r < 0.55) reeds(x, y, s); else if (r < 0.64) pond(x, y, s); },
+      desert: function (x, y, r, s) { if (r < 0.4) dune(x, y, s); else if (r < 0.52) cactus(x, y, s); else if (r < 0.6) rock(x, y, s, '#b8a07e'); },
+      snow: function (x, y, r, s) { if (r < 0.5) peak(x, y, s * 1.25, '#9aa6b2', '#f3f7fa'); else if (r < 0.72) pine(x, y, s, '#2f6e4a', true); },
+      volcanic: function (x, y, r, s) { if (r < 0.45) peak(x, y, s * 1.15, '#5e524c', null); else if (r < 0.6) snag(x, y, s); else if (r < 0.7) lava(x, y, s); }
+    };
+    const roads = mapRoads(aspect, maxTier);
+    // keep landmarks off the settlements, their name plates and the roads
+    function clear(u, v) {
+      for (let k = 0; k < n; k++) {
+        const dx = u - sx[k], dy = v - sy[k];
+        if (dx * dx + dy * dy < 0.0049 || (dy > 0 && dy < 0.11 && Math.abs(dx) < 0.14)) return false;
+      }
+      return roads.every(function (rd) { return rd.pts.every(function (p) { return Math.abs(p[0] - u) > 0.03 || Math.abs(p[1] - v) > 0.03; }); });
+    }
+    const rng = new U.Rng(4242), step = 30, marks = [];
+    for (let gy = step * 0.6; gy < H; gy += step) {
+      for (let gx = step * 0.5; gx < W; gx += step) {
+        const x = gx + (rng.next() - 0.5) * step * 0.9, y = gy + (rng.next() - 0.5) * step * 0.9, r = rng.next(), s = 0.85 + rng.next() * 0.35;
+        const u = x / H, v = y / H;
+        if (Math.min(u, aspect - u, v, 1 - v) < 0.04 || !clear(u, v)) continue;
+        const k = nearest(u, v);
+        marks.push({ x: x, y: y, r: r, s: s, biome: sites[k].biome, fog: sites[k].fog });
+      }
+    }
+    // one volcano where the Cinder Legion lives
+    const vu = 0.77 * aspect, vv = 0.18;
+    if (sites[nearest(vu, vv)].biome === 'volcanic') marks.push({ x: vu * H, y: vv * H, volcano: true, fog: sites[nearest(vu, vv)].fog });
+    marks.sort(function (p, q) { return p.y - q.y; });
+    marks.forEach(function (p) {
+      g.globalAlpha = p.fog ? 0.45 : 1;
+      if (p.volcano) volcano(p.x, p.y, 1.1); else GLYPH[p.biome](p.x, p.y, p.r, p.s);
+    });
+    g.globalAlpha = 1;
+
+    // ---- roads: worn ground under a dashed ink track; roads into fog are faint
+    roads.forEach(function (rd) {
+      g.beginPath(); g.moveTo(rd.ax * H, rd.ay * H); g.quadraticCurveTo(rd.cx * H, rd.cy * H, rd.bx * H, rd.by * H);
+      g.setLineDash([]); g.lineWidth = 6; g.strokeStyle = rd.fog ? 'rgba(240, 226, 190, 0.18)' : 'rgba(244, 228, 186, 0.42)'; g.stroke();
+      g.setLineDash([7, 6]); g.lineWidth = 2.2; g.strokeStyle = rd.fog ? 'rgba(43, 30, 18, 0.35)' : 'rgba(43, 30, 18, 0.8)'; g.stroke();
     });
     g.setLineDash([]);
-    // decorations per region
-    const rng = new U.Rng(99);
-    for (let i = 0; i < 140; i++) {
-      const x = rng.next() * W, y = rng.next() * H;
-      let best = null, bd = Infinity;
-      pts.forEach(function (p) { const d = (p.x * W - x) * (p.x * W - x) + (p.y * H - y) * (p.y * H - y); if (d < bd) { bd = d; best = p; } });
-      if (bd < 900) continue;
-      const col = best.col;
-      if (col === BIOME_COL.snow || col === BIOME_COL.volcanic) {
-        g.fillStyle = col === BIOME_COL.snow ? '#b9c9d6' : '#3e2e29';
-        g.beginPath(); g.moveTo(x - 9, y + 6); g.lineTo(x, y - 9); g.lineTo(x + 9, y + 6); g.fill();
-        g.fillStyle = col === BIOME_COL.snow ? '#ffffff' : '#ff7a3c';
-        g.beginPath(); g.moveTo(x - 3.5, y - 3); g.lineTo(x, y - 9); g.lineTo(x + 3.5, y - 3); g.fill();
-      } else if (col === BIOME_COL.desert) {
-        g.strokeStyle = 'rgba(160,120,60,0.6)'; g.lineWidth = 1.5;
-        g.beginPath(); g.moveTo(x - 8, y); g.quadraticCurveTo(x, y - 5, x + 8, y); g.stroke();
-      } else {
-        g.fillStyle = col === BIOME_COL.swamp ? '#4c6a32' : '#3f8a3a';
-        g.beginPath(); g.arc(x, y, 4 + rng.next() * 3, 0, Math.PI * 2); g.fill();
-      }
+
+    // ---- compass rose in the free lower-left corner
+    const cx = 0.07 * aspect * H, cy = 0.87 * H, R = 0.045 * H;
+    g.save(); g.translate(cx, cy);
+    for (let i = 0; i < 4; i++) {
+      g.rotate(i ? Math.PI / 2 : 0);
+      tri(0, -R, R * 0.22, 0, -R * 0.22, 0); g.fillStyle = i % 2 ? '#efe2c4' : '#d4a556'; g.fill(); ink(1.3);
+      tri(0, -R, R * 0.22, 0, 0, 0); g.fillStyle = 'rgba(43, 30, 18, 0.28)'; g.fill();
     }
-    return c;
+    g.restore();
+    dot(cx, cy, R * 0.16); g.fillStyle = '#efe2c4'; g.fill(); ink(1.2);
+    g.fillStyle = MAP_INK; g.font = '400 ' + Math.round(R * 0.62) + 'px "Bree Serif", Georgia, serif'; g.textAlign = 'center'; g.textBaseline = 'alphabetic';
+    g.fillText('N', cx, cy - R - 4);
+    return cv;
   }
 
   function mountMap() {
     const host = document.querySelector('.wmap .wbg');
     if (!host) return;
-    if (!mapCanvas) mapCanvas = drawMap();
-    host.appendChild(mapCanvas);
+    const r = host.getBoundingClientRect();
+    const aspect = r.height ? Math.round(r.width / r.height * 4) / 4 : 1.5;   // the map's shape, to a quarter
+    const tier = NPC.unlockedTier(G.state);
+    const key = aspect + ':' + tier;
+    if (!maps[key]) maps[key] = drawMap(aspect, tier);
+    host.appendChild(maps[key]);
+  }
+
+  function kv(label, html, cls) {
+    return '<div class="kv' + (cls ? ' ' + cls : '') + '"><span class="lbl">' + label + '</span><div class="kv-v">' + html + '</div></div>';
+  }
+
+  function pips(n) {
+    let s = '';
+    for (let i = 0; i < 3; i++) s += '<i' + (i < n ? ' class="on"' : '') + '></i>';
+    return '<span class="pips" aria-label="' + n + ' of 3">' + s + '</span>';
   }
 
   MODALS.world = function () {
@@ -678,98 +967,130 @@
       UI.worldSel = (fresh || open[0]).id;
     }
     const nodes = C.settlements.map(function (s) {
-      const rec = NPC.rec(st, s.id);
+      const rec = NPC.rec(st, s.id), fac = NPC.faction(s);
       const open = s.tier <= maxTier;
-      const reb = rec.rebuildUntil > t;
-      const fac = NPC.faction(s);
-      return '<button class="node' + (open ? '' : ' locked') + (reb ? ' reb' : '') + (UI.worldSel === s.id ? ' sel' : '') + '" style="left:' + (s.pos[0] * 100) + '%;top:' + (s.pos[1] * 100) + '%;--fc:' + fac.color + '" data-act="node" data-id="' + s.id + '">' +
-        '<span class="dot">' + (open ? s.tier : ICON.lock) + '</span><span class="nl">' + esc(s.name) + (rec.stars ? stars(rec.stars) : '') + '</span></button>';
-    }).join('') + '<div class="node home" style="left:' + HOME_POS[0] * 100 + '%;top:' + HOME_POS[1] * 100 + '%"><span class="dot">' + ICON.home + '</span><span class="nl">Your base</span></div>';
-    return head('World Map', 'sword') + '<div class="mbody world"><div class="wmap"><div class="wbg"></div>' + nodes + '</div>' + worldDetail(UI.worldSel) + '</div>';
+      const reb = open && rec.rebuildUntil > t;
+      const sel = UI.worldSel === s.id;
+      return '<button class="node' + (open ? '' : ' locked') + (reb ? ' reb' : '') + (sel ? ' sel' : '') + '" style="left:' + (s.pos[0] * 100) + '%;top:' + (s.pos[1] * 100) + '%" data-act="node" data-id="' + s.id + '"' +
+        ' aria-pressed="' + sel + '" aria-label="' + esc(s.name) + ', tier ' + s.tier + (open ? '' : ', locked') + (reb ? ', rebuilding' : '') + (rec.stars ? ', ' + rec.stars + ' of 3 stars' : '') + '">' +
+        '<span class="pin">' + CS.Icons.crest(s.faction, fac.color) + '<b class="tno">' + s.tier + '</b>' + (open ? (reb ? '<i class="nb">' + ICON.hammer + '</i>' : '') : '<i class="nb">' + ICON.lock + '</i>') + '</span>' +
+        '<span class="nl">' + esc(s.name) + (rec.stars ? stars(rec.stars) : '') + (reb ? '<small>' + until(rec.rebuildUntil) + '</small>' : '') + '</span></button>';
+    }).join('');
+    const home = '<div class="node home" style="left:' + HOME_POS[0] * 100 + '%;top:' + HOME_POS[1] * 100 + '%"><span class="pin">' +
+      banner(ICON.home.replace('<svg ', '<svg x="8" y="8.4" width="16" height="16" color="#f5ead2" ')) + '</span><span class="nl">Your base</span></div>';
+    const wins = NPC.winsInTier(st, maxTier);
+    const reveal = maxTier < C.tiers.length - 1 ? hstat('flag', wins + '/' + C.world.unlockWins, 'wins to reveal Tier ' + (maxTier + 1), '', 'Win against ' + C.world.unlockWins + ' different Tier ' + maxTier + ' settlements to reveal the next tier.') : hstat('flag', 'All', 'tiers revealed');
+    return head('World Map', 'sword', false, reveal) + '<div class="mbody"><div class="world"><div class="wmap"><div class="wbg"></div>' + nodes + home + '</div>' + worldDetail(UI.worldSel) + '</div></div>';
   };
 
   function worldDetail(id) {
     const st = G.state, t = CS.Clock.now();
-    const s = NPC.def(id);
-    const rec = NPC.rec(st, id);
-    const fac = NPC.faction(s);
+    const s = NPC.def(id), rec = NPC.rec(st, id), fac = NPC.faction(s);
     const chk = G.raidStatus(id);
     const open = NPC.isUnlocked(st, s);
-    let body = '';
-    if (!open) {
-      body = '<div class="notice">' + ic('lock') + esc(chk.reason) + '.</div>';
-    } else {
+    let body;
+    if (!open) body = notice('lock', esc(chk.reason) + '.');
+    else {
       const diff = NPC.difficulty(st, s);
-      const loot = NPC.loot(st, s, t);
-      const bonus = C.tiers[s.tier].bonus;
       const defs = NPC.defenseSummary(st, s);
-      const defHtml = Object.keys(defs).map(function (type) {
-        return '<span class="dchip" data-tip="' + esc(C.buildings[type].name) + ' (up to Lv ' + defs[type].maxLv + ')">' + thumb(type, defs[type].maxLv, fac.color, 48) + '<b>' + defs[type].n + '</b></span>';
+      const chips = Object.keys(defs).map(function (type) {
+        const d = defs[type];
+        return '<span class="dchip" data-tip="' + esc(C.buildings[type].name) + ' &times;' + d.n + ', up to Lv ' + d.maxLv + '">' + thumb(type, d.maxLv, fac.color, 48) +
+          '<span><b>&times;' + d.n + '</b><small>Lv ' + d.maxLv + '</small></span></span>';
       }).join('');
-      const hostility = rec.hostility ? '<div class="hostile">' + ic('warn') + 'Hostility ' + '&#9679;'.repeat(rec.hostility) + '&#9675;'.repeat(3 - rec.hostility) + '. They may raid you in revenge.</div>' : '';
-      body = '<div class="drow"><span class="diff ' + diff.cls + '">' + diff.label + '</span><span class="muted">for your current army</span></div>' +
-        '<div class="loot"><span class="lbl">Available loot</span>' + costHtml(loot) + '<small>+' + U.fmt(bonus) + ' of each for a 3-star win</small></div>' +
-        '<div class="defs"><span class="lbl">Defenses</span>' + (defHtml || '<i>none</i>') + '</div>' +
-        '<div class="record">Record: <b>' + rec.wins + '</b> wins, <b>' + rec.losses + '</b> losses' + (rec.stars ? ' &middot; best ' + stars(rec.stars) : '') + (rec.fortify ? ' &middot; fortified x' + rec.fortify : '') + '</div>' + hostility;
-      if (chk.rebuilding) body += '<div class="notice">' + ic('hammer') + 'Rebuilding after your raid. Opens again in ' + until(chk.rebuilding) + '.</div>';
+      body = kv('Difficulty', '<b class="diff ' + diff.cls + '">' + diff.label + '</b><small>for your current army</small>') +
+        kv('Available loot', costHtml(NPC.loot(st, s, t)) + '<small>+' + U.fmt(C.tiers[s.tier].bonus) + ' of each for a 3-star win</small>') +
+        kv('Defenses', chips ? '<span class="dchips">' + chips + '</span>' : '<small>None</small>') +
+        kv('Record', '<span><b>' + rec.wins + '</b> won &middot; <b>' + rec.losses + '</b> lost</span>' + (rec.stars ? stars(rec.stars) : '') + (rec.fortify ? '<small>Fortified &times;' + rec.fortify + ' after your victories</small>' : '')) +
+        (rec.hostility ? kv('Hostility', pips(rec.hostility) + '<small>They may raid you in revenge.</small>', 'hostile') : '') +
+        (chk.rebuilding ? notice('hammer', 'Rebuilding after your raid. Opens again in ' + until(chk.rebuilding) + '.') : '');
     }
-    const army = Army.totalUnits(st);
     let action;
-    if (chk.ok) action = '<button class="mbtn attack" data-act="attack" data-id="' + id + '">' + ic('sword') + '<span>Attack with ' + army + ' troops</span></button>';
+    if (chk.ok) action = '<button class="mbtn attack" data-act="attack" data-id="' + id + '">' + ic('sword') + '<span>Attack with ' + Army.totalUnits(st) + ' troops</span></button>';
     else if (chk.noArmy && open) action = '<button class="mbtn" data-act="army">' + ic('army') + '<span>Train troops first</span></button>';
-    else action = '<button class="mbtn" disabled>' + ic('sword') + '<span>' + (open ? esc(chk.reason) : 'Locked') + '</span></button>';
-    return '<div class="wdetail" style="--fc:' + fac.color + '"><div class="wd-h"><span class="tier">Tier ' + s.tier + '</span><h3>' + esc(s.name) + '</h3>' +
-      '<div class="muted">' + esc(fac.name) + ' &middot; led by ' + esc(s.leader) + '</div></div>' + body + action +
-      '<p class="hint">Win ' + C.world.unlockWins + ' raids in a tier to reveal the next one. Defeated settlements rebuild stronger and richer.</p></div>';
+    else if (chk.rebuilding) action = '<button class="mbtn" disabled>' + ic('hammer') + '<span>Rebuilding</span></button>';
+    else action = '<button class="mbtn" disabled>' + ic(open ? 'sword' : 'lock') + '<span>' + (open ? esc(chk.reason) : 'Locked') + '</span></button>';
+    return '<div class="wdetail" style="--fc:' + fac.color + '"><div class="wd-h"><span class="wd-crest">' + CS.Icons.crest(s.faction, fac.color) + '</span>' +
+      '<div class="wd-t"><span class="lbl">Tier ' + s.tier + '</span><h3>' + esc(s.name) + '</h3><small>' + esc(fac.name) + ' &middot; led by ' + esc(s.leader) + '</small></div></div>' +
+      '<div class="wd-b">' + body + '</div><div class="wd-act">' + action +
+      '<p class="hint">Win ' + C.world.unlockWins + ' raids in a tier to reveal the next one. Defeated settlements rebuild stronger and richer.</p></div></div>';
   }
 
   // ----- log
   const LOG_ICON = { info: 'info', world: 'scroll', defense: 'shield', raid: 'skull', victory: 'star', defeat: 'warn' };
   MODALS.log = function () {
-    const st = G.state;
+    const st = G.state, s = st.stats;
+    const cell = function (label, value) { return '<div class="lstat"><span class="lbl">' + label + '</span><b>' + value + '</b></div>'; };
     const rows = st.log.map(function (e) {
-      return '<div class="lrow ' + e.kind + '">' + ic(LOG_ICON[e.kind] || 'info') + '<div><p>' + esc(e.text) + '</p><small>' + ago(e.t) + '</small></div></div>';
-    }).join('') || '<p class="hint">Nothing has happened yet.</p>';
-    const s = st.stats;
-    return head('Event Log', 'scroll') + '<div class="mbody"><div class="statsline">Raids won <b>' + s.raidsWon + '</b> &middot; lost <b>' + s.raidsLost +
-      '</b> &middot; defenses held <b>' + s.defended + '</b> &middot; times raided <b>' + s.raided + '</b> &middot; loot taken <b>' + U.fmt(s.lootCredits + s.lootEnergy) + '</b></div>' + rows + '</div>';
+      return '<li class="lrow ' + e.kind + '">' + ic(LOG_ICON[e.kind] || 'info') + '<span>' + esc(e.text) + '</span><small>' + ago(e.t) + '</small></li>';
+    }).join('');
+    return head('Event Log', 'scroll') + '<div class="mbody"><div class="lstats">' +
+      cell('Raids won', s.raidsWon) + cell('Raids lost', s.raidsLost) + cell('Defenses held', s.defended) + cell('Times raided', s.raided) +
+      cell('Loot taken', '<span class="cost">' + resIcon('credits') + U.fmt(s.lootCredits) + '</span><span class="cost">' + resIcon('energy') + U.fmt(s.lootEnergy) + '</span>') +
+      cell('Lost to raiders', U.fmt(s.stolen)) + '</div>' +
+      '<h4>Recent events</h4>' + (rows ? '<ul class="lrows">' + rows + '</ul>' : '<p class="hint">Nothing has happened yet.</p>') + '</div>';
   };
 
   // ----- settings
+  function srow(label, sub, control, cls) {
+    return '<div class="srow' + (cls ? ' ' + cls : '') + '"><div class="sl"><b>' + label + '</b>' + (sub ? '<small>' + sub + '</small>' : '') + '</div>' + control + '</div>';
+  }
+
   function toggle(key, label, sub) {
     const on = !!G.state.settings[key];
-    return '<div class="srow"><div><b>' + label + '</b>' + (sub ? '<small>' + sub + '</small>' : '') + '</div><button class="switch' + (on ? ' on' : '') + '" data-act="setting" data-key="' + key + '" aria-pressed="' + on + '"><span></span></button></div>';
+    return srow(label, sub, '<button class="switch' + (on ? ' on' : '') + '" role="switch" aria-checked="' + on + '" aria-label="' + label + '" data-act="setting" data-key="' + key + '"><span></span></button>');
   }
+
+  function group(title, rows) { return '<h4>' + title + '</h4><div class="sgroup">' + rows + '</div>'; }
 
   MODALS.settings = function () {
     const st = G.state;
     const modes = Object.keys(C.attacks.modes).map(function (k) {
-      return '<button class="seg' + (st.settings.raidMode === k ? ' on' : '') + '" data-act="raidMode" data-v="' + k + '">' + C.attacks.modes[k].label + '</button>';
+      const on = st.settings.raidMode === k;
+      return '<button class="seg' + (on ? ' on' : '') + '" role="radio" aria-checked="' + on + '" data-act="raidMode" data-v="' + k + '">' + C.attacks.modes[k].label + '</button>';
     }).join('');
-    const saved = st.savedAt ? ago(st.savedAt) : 'never';
-    const storage = CS.State.storageAvailable() ? 'Progress is saved in this browser (last save ' + saved + ').' : '<span class="bad">This browser is blocking local storage, so progress cannot be saved.</span>';
-    return head('Settings', 'gear') + '<div class="mbody settings">' +
-      toggle('sfx', 'Sound effects') + toggle('music', 'Music') +
-      '<div class="srow"><div><b>Volume</b></div><input type="range" min="0" max="1" step="0.05" value="' + st.settings.volume + '" data-range="volume" aria-label="Volume"></div>' +
-      toggle('showGrid', 'Always show the grid', 'The grid always appears while building or editing.') +
-      '<div class="srow col"><div><b>NPC raids on your base</b><small>How often enemy settlements attack you. Shields, a protection period and loot caps always apply.</small></div><div class="segs">' + modes + '</div></div>' +
-      '<div class="srow col"><div><b>Saving</b><small>' + storage + ' The game also saves automatically every ' + C.autosaveSec + ' seconds and whenever you leave the tab.</small></div>' +
-      '<div class="row"><button class="sbtn" data-act="saveNow">Save now</button><button class="sbtn" data-act="help">' + ic('help') + 'Controls &amp; help</button><button class="sbtn danger" data-act="resetGame">Start a new game</button></div></div>' +
-      '<p class="hint">Clash of CS runs entirely in your browser with no internet connection or accounts.</p></div>';
+    const ok = CS.State.storageAvailable();
+    const status = ok ? '<span class="sstat">' + ic('check') + (st.savedAt ? 'Saved ' + ago(st.savedAt) : 'Not saved yet') + '</span>' : '<span class="sstat bad">' + ic('warn') + 'Saving is blocked</span>';
+    const sub = ok ? 'Progress is saved in this browser. The game also saves automatically every ' + C.autosaveSec + ' seconds and whenever you leave the tab.'
+      : 'This browser is blocking local storage, so progress cannot be saved.';
+    return head('Settings', 'gear') + '<div class="mbody">' +
+      group('Audio', toggle('sfx', 'Sound effects') + toggle('music', 'Music') +
+        srow('Volume', '', '<input type="range" min="0" max="1" step="0.05" value="' + st.settings.volume + '" data-range="volume" aria-label="Volume">')) +
+      group('Display', toggle('showGrid', 'Always show the grid', 'The grid always appears while building or editing.')) +
+      group('Raids', srow('NPC raids on your base', 'How often enemy settlements attack you. Shields, a protection period and loot caps always apply.',
+        '<div class="segs" role="radiogroup" aria-label="NPC raids on your base">' + modes + '</div>', 'col')) +
+      group('Saving', srow(status, sub, '<button class="sbtn" data-act="saveNow">Save now</button>') +
+        '<div class="srow acts"><button class="sbtn" data-act="help">' + ic('help') + 'Controls &amp; help</button><button class="sbtn danger" data-act="resetGame">Start a new game</button></div>') +
+      '<p class="hint mfoot">Clash of CS runs entirely in your browser with no internet connection or accounts.</p></div>';
   };
 
+  const KEYS = [
+    ['Camera', [['Move the camera', 'Drag, arrow keys or <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd>'], ['Zoom', 'Mouse wheel, pinch or <kbd>+</kbd><kbd>-</kbd>'],
+      ['Recenter on your base', '<kbd>Space</kbd>']]],
+    ['Village', [['Inspect, collect, upgrade', 'Click or tap a building'], ['Build menu', '<kbd>B</kbd>'], ['Edit mode (move buildings)', '<kbd>E</kbd>'],
+      ['Rotate while placing, otherwise Research', '<kbd>R</kbd>'], ['Place the building', '<kbd>Enter</kbd>'], ['Army and training', '<kbd>T</kbd>'], ['World map', '<kbd>M</kbd>'],
+      ['Event log', '<kbd>L</kbd>'], ['Collect all resources', '<kbd>C</kbd>'], ['Controls and help', '<kbd>H</kbd>'], ['Close or cancel, otherwise Settings', '<kbd>Esc</kbd>']]],
+    ['Raids', [['Pick a troop', '<kbd>1</kbd>&ndash;<kbd>6</kbd>'], ['Deploy troops', 'Tap, or hold for a stream'], ['Deploy at the cursor', '<kbd>Space</kbd>'], ['Battle speed', '<kbd>F</kbd>']]]
+  ];
+
   MODALS.help = function () {
-    const keys = [['Drag / arrow keys / WASD', 'Move the camera'], ['Mouse wheel / pinch / + -', 'Zoom'], ['Click or tap a building', 'Inspect, collect, upgrade'], ['B', 'Build menu'], ['E', 'Edit mode (move buildings)'], ['R', 'Rotate while placing, otherwise Research'], ['T', 'Army and training'], ['M', 'World map'], ['L', 'Event log'], ['C', 'Collect all resources'], ['Esc', 'Close / cancel'], ['1-6', 'Pick a troop during a raid'], ['Tap or hold', 'Deploy troops during a raid'], ['Space', 'Deploy at the cursor (raid) or recenter'], ['F', 'Battle speed']];
-    return head('Controls & Help', 'help') + '<div class="mbody help"><table class="keys">' + keys.map(function (k) { return '<tr><td><kbd>' + k[0] + '</kbd></td><td>' + k[1] + '</td></tr>'; }).join('') + '</table>' +
-      '<h4>How to play</h4><ul><li>Generators fill up over time. Tap them to collect into your storages.</li><li>Each Engineer works on one construction at a time. Build more Engineering Stations for more Engineers.</li>' +
-      '<li>Train troops at the Barracks, then raid settlements from the World Map. Destroy half the buildings or the Command Core to win.</li>' +
-      '<li>Raiders attack your base after the protection period. Defenses fight automatically, destroyed buildings are rebuilt by your Engineering Stations, and a shield follows every raid.</li>' +
-      '<li>While the game is closed, production (up to ' + C.offline.maxProductionHours + ' hours), training, construction and research continue. A few raids may happen too.</li></ul></div>';
+    const keys = function (grp) {
+      return '<h4>' + grp[0] + '</h4><table class="keys">' + grp[1].map(function (k) { return '<tr><td>' + k[0] + '</td><td>' + k[1] + '</td></tr>'; }).join('') + '</table>';
+    };
+    const steps = ['Generators fill up over time. Tap them to collect into your storages.',
+      'Each Engineer works on one construction at a time. Build more Engineering Stations for more Engineers.',
+      'Train troops at the Barracks, then raid settlements from the World Map. Destroy half the buildings or the Command Core to win.',
+      'Raiders attack your base after the protection period. Defenses fight automatically, destroyed buildings are rebuilt by your Engineering Stations, and a shield follows every raid.',
+      'While the game is closed, production (up to ' + C.offline.maxProductionHours + ' hours), training, construction and research continue. A few raids may happen too.'];
+    return head('Controls &amp; Help', 'help') + '<div class="mbody"><div class="help"><div>' + keys(KEYS[0]) + keys(KEYS[1]) + '</div>' +
+      '<div>' + keys(KEYS[2]) + '<h4>How to play</h4><ol class="steps">' + steps.map(function (s) { return '<li>' + s + '</li>'; }).join('') + '</ol></div></div></div>';
   };
 
   // ----- confirm
   MODALS.confirm = function (o) {
-    return head(esc(o.title || 'Are you sure?'), 'warn', true) + '<div class="mbody"><p>' + esc(o.text) + '</p><div class="row end"><button class="sbtn" data-act="confirmNo">' + esc(o.no || 'Cancel') + '</button><button class="sbtn ' + (o.danger ? 'danger' : 'primary') + '" data-act="confirmYes">' + esc(o.yes || 'Confirm') + '</button></div></div>';
+    return head(esc(o.title || 'Are you sure?'), o.danger ? 'warn' : 'help', true) + '<div class="mbody"><p class="ctext">' + esc(o.text) + '</p>' +
+      '<div class="mact"><button class="mbtn ghost" data-act="confirmNo">' + esc(o.no || 'Cancel') + '</button>' +
+      '<button class="mbtn ' + (o.danger ? 'danger' : 'primary') + '" data-act="confirmYes">' + esc(o.yes || 'Confirm') + '</button></div></div>';
   };
 
   UI.confirm = function (o, onYes) {
@@ -779,26 +1100,37 @@
 
   // ----- defense report
   function defenseHtml(rep, compact) {
-    const pct = Math.round(rep.destruction * 100);
-    const destroyed = {};
-    rep.destroyed.forEach(function (t) { destroyed[t] = (destroyed[t] || 0) + 1; });
-    const dlist = Object.keys(destroyed).map(function (t) { return C.buildings[t].name + (destroyed[t] > 1 ? ' x' + destroyed[t] : ''); }).join(', ');
-    return '<div class="dreport ' + (rep.defended ? 'win' : 'lose') + '"><div class="dh">' + ic(rep.defended ? 'shield' : 'skull') + '<div><b>' + (rep.defended ? 'Raid repelled' : 'Base raided') + '</b> by ' + esc(rep.attacker) +
-      (rep.raidKind === 'retaliation' ? ' <span class="tag">revenge</span>' : '') + '<small>' + esc(rep.faction) + (compact ? ' &middot; ' + ago(rep.at) : '') + '</small></div>' + stars(rep.stars) + '</div>' +
-      '<div class="dgrid"><div><span>Damage</span><b>' + pct + '%</b></div><div><span>Raiders defeated</span><b>' + rep.killed + ' / ' + rep.raiders + '</b></div>' +
-      '<div><span>Stolen</span><b>' + (rep.stolen.credits + rep.stolen.energy ? costHtml(rep.stolen) : 'nothing') + '</b></div><div><span>Renown</span><b class="' + (rep.renown > 0 ? 'good' : rep.renown < 0 ? 'bad' : '') + '">' + (rep.renown > 0 ? '+' : '') + rep.renown + '</b></div></div>' +
-      (dlist ? '<small>Destroyed: ' + esc(dlist) + '</small>' : '') +
-      (rep.top ? '<small>Top defender: ' + esc(C.buildings[rep.top.type].name) + ' (' + U.fmt(rep.top.dmg) + ' damage)</small>' : '') + '</div>';
+    const st = G.state;
+    const s = NPC.def(rep.attackerId);
+    const counts = {};
+    rep.destroyed.forEach(function (t) { counts[t] = (counts[t] || 0) + 1; });
+    const lost = Object.keys(counts).map(function (t) { return esc(C.buildings[t].name) + (counts[t] > 1 ? ' &times;' + counts[t] : ''); }).join(', ');
+    let top = '';
+    if (rep.top) {
+      const lv = Base.ofType(st, rep.top.type).reduce(function (m, b) { return Math.max(m, b.level); }, 1);
+      top = '<div class="dr-line"><span class="lbl">Top defender</span><span class="dr-top">' + thumb(rep.top.type, lv, null, 48) + esc(C.buildings[rep.top.type].name) + '<small>' + U.fmt(rep.top.dmg) + ' damage</small></span></div>';
+    }
+    return '<div class="dreport ' + (rep.defended ? 'held' : 'lost') + (compact ? ' compact' : '') + '">' +
+      '<div class="dr-h"><span class="dr-crest">' + (s ? CS.Icons.crest(s.faction, NPC.faction(s).color) : ICON.skull) + '</span>' +
+      '<div class="dr-t"><span class="lbl">' + (rep.defended ? 'Raid repelled' : 'Base raided') + (rep.raidKind === 'retaliation' ? ' &middot; revenge' : '') + '</span>' +
+      '<b>' + esc(rep.attacker) + '</b><small>' + esc(rep.faction) + (rep.leader ? ' &middot; led by ' + esc(rep.leader) : '') + (compact ? ' &middot; ' + ago(rep.at) : '') + '</small></div>' +
+      '<div class="dr-stars" data-tip="Stars the raiders earned">' + stars(rep.stars) + '</div></div>' +
+      '<div class="dr-grid"><div><span class="lbl">Damage</span><b>' + Math.round(rep.destruction * 100) + '%</b>' + staticBar(rep.destruction, 'dmg') + '</div>' +
+      '<div><span class="lbl">Raiders defeated</span><b>' + rep.killed + ' / ' + rep.raiders + '</b></div>' +
+      '<div><span class="lbl">Stolen</span><b>' + (rep.stolen.credits + rep.stolen.energy ? costHtml(rep.stolen) : 'Nothing') + '</b></div>' +
+      '<div><span class="lbl">Renown</span><b class="' + (rep.renown > 0 ? 'good' : rep.renown < 0 ? 'bad' : '') + '">' + (rep.renown > 0 ? '+' : '') + rep.renown + '</b></div></div>' +
+      (lost ? '<div class="dr-line"><span class="lbl">Destroyed</span><span>' + lost + '</span></div>' : '') + top + '</div>';
   }
 
   MODALS.defense = function (rep) {
     const st = G.state;
     const cost = Eco.repairAllCost(st);
-    const shield = Math.max(0, (st.threat.shieldUntil - CS.Clock.now()) / 1000);
+    const shield = st.threat.shieldUntil > CS.Clock.now();
     return head(rep.defended ? 'Your defenses held!' : 'Your base was raided', rep.defended ? 'shield' : 'warn', true) + '<div class="mbody">' + defenseHtml(rep) +
-      (shield ? '<div class="notice">' + ic('shield') + '<div>A shield protects you from raids for ' + U.fmtTime(shield) + '.</div></div>' : '') +
-      (cost ? '<div class="notice">' + ic('wrench') + '<div>Engineering Stations repair damage automatically' + (Eco.repairRate(st) ? ' (' + Eco.repairRate(st) + ' HP/s)' : '') + '. Repair everything now for ' + costHtml({ credits: cost }, st) + '?</div></div>' : '') +
-      '<div class="row end">' + (cost ? '<button class="sbtn" data-act="defRepair">' + ic('wrench') + 'Repair now</button>' : '') + '<button class="mbtn primary" data-act="close"><span>Continue</span></button></div></div>';
+      (shield ? notice('shield', 'A shield protects you from raids for ' + until(st.threat.shieldUntil) + '.') : '') +
+      (cost ? notice('wrench', 'Engineering Stations repair damage automatically' + (Eco.repairRate(st) ? ' (' + Eco.repairRate(st) + ' HP/s)' : '') + '. You can also repair everything now.') : '') +
+      '<div class="mact">' + (cost ? '<button class="mbtn" data-act="defRepair">' + ic('wrench') + '<span>Repair now</span>' + costHtml({ credits: cost }, st) + '</button>' : '') +
+      '<button class="mbtn primary" data-act="close"><span>Continue</span></button></div></div>';
   };
 
   UI.defenseReport = function (rep) {
@@ -807,25 +1139,28 @@
   };
 
   // ----- away report
+  function arow(icon, title, html) { return '<div class="arow">' + ic(icon) + '<div><b>' + title + '</b>' + html + '</div></div>'; }
+
   MODALS.away = function (rep) {
     const st = G.state;
     const parts = [];
     const prod = rep.produced.credits + rep.produced.energy;
-    if (prod > 0) parts.push('<div class="arow">' + ic('sack') + '<div><b>Produced</b> ' + costHtml(rep.produced) + '<small>Waiting in your generators.' + (rep.capped ? ' Production while away is capped at ' + C.offline.maxProductionHours + ' hours.' : '') + '</small></div></div>');
+    if (prod > 0) parts.push(arow('sack', 'Produced', '<span class="arow-v">' + costHtml(rep.produced) + '</span><small>Waiting in your generators.' + (rep.capped ? ' Production while away is capped at ' + C.offline.maxProductionHours + ' hours.' : '') + '</small>'));
     const done = rep.built.map(function (e) { return C.buildings[e.btype].name + ' built'; }).concat(rep.upgraded.map(function (e) { return C.buildings[e.btype].name + ' Lv ' + e.level; }));
-    if (done.length) parts.push('<div class="arow">' + ic('hammer') + '<div><b>Construction finished</b><small>' + esc(done.join(', ')) + '</small></div></div>');
+    if (done.length) parts.push(arow('hammer', 'Construction finished', '<small>' + esc(done.join(', ')) + '</small>'));
     const tr = Object.keys(rep.trained);
-    if (tr.length) parts.push('<div class="arow">' + ic('army') + '<div><b>Troops trained</b><small>' + tr.map(function (t) { return rep.trained[t] + ' ' + C.troops[t].name + (rep.trained[t] > 1 ? 's' : ''); }).join(', ') + '</small></div></div>');
-    if (rep.research.length) parts.push('<div class="arow">' + ic('flask') + '<div><b>Research complete</b><small>' + rep.research.map(function (e) { return esc(CS.Research.describe(st, e.key).name) + ' Lv ' + e.level; }).join(', ') + '</small></div></div>');
-    if (rep.repaired) parts.push('<div class="arow">' + ic('wrench') + '<div><b>Rebuilt</b><small>' + rep.repaired + ' destroyed building' + (rep.repaired > 1 ? 's were' : ' was') + ' restored by your Engineers.</small></div></div>');
+    if (tr.length) parts.push(arow('army', 'Troops trained', '<small>' + tr.map(function (t) { return rep.trained[t] + ' ' + C.troops[t].name + (rep.trained[t] > 1 ? 's' : ''); }).join(', ') + '</small>'));
+    if (rep.research.length) parts.push(arow('flask', 'Research complete', '<small>' + rep.research.map(function (e) { return esc(CS.Research.describe(st, e.key).name) + ' Lv ' + e.level; }).join(', ') + '</small>'));
+    if (rep.repaired) parts.push(arow('wrench', 'Rebuilt', '<small>' + rep.repaired + ' destroyed building' + (rep.repaired > 1 ? 's were' : ' was') + ' restored by your Engineers.</small>'));
     const raids = rep.raids.map(function (r) { return defenseHtml(r, true); }).join('');
     const seen = {};
     rep.news.forEach(function (n) { seen[n] = (seen[n] || 0) + 1; });
     const lines = Object.keys(seen).slice(-6);
-    const news = lines.length ? '<h4>World news</h4><ul class="news">' + lines.map(function (n) { return '<li>' + esc(n) + (seen[n] > 1 ? ' <b>(x' + seen[n] + ')</b>' : '') + '</li>'; }).join('') + '</ul>' : '';
-    return head('Welcome back, Commander', 'home', true) + '<div class="mbody away"><p class="muted">You were away for <b>' + U.fmtTime(rep.seconds) + '</b>.</p>' + parts.join('') +
-      (raids ? '<h4>Raids on your base</h4>' + raids : '') + news +
-      '<div class="row end">' + (prod > 0 ? '<button class="sbtn" data-act="awayCollect">' + ic('sack') + 'Collect all</button>' : '') + '<button class="mbtn primary" data-act="close"><span>Continue</span></button></div></div>';
+    const news = lines.length ? '<h4>World news</h4><ul class="news">' + lines.map(function (n) { return '<li>' + esc(n) + (seen[n] > 1 ? ' <b>(&times;' + seen[n] + ')</b>' : '') + '</li>'; }).join('') + '</ul>' : '';
+    return head('Welcome back, Commander', 'home', true) + '<div class="mbody"><p class="lead">You were away for <b>' + U.fmtTime(rep.seconds) + '</b>.</p>' +
+      (parts.length ? '<div class="arows">' + parts.join('') + '</div>' : '') + (raids ? '<h4>Raids on your base</h4><div class="draids">' + raids + '</div>' : '') + news +
+      '<div class="mact">' + (prod > 0 ? '<button class="mbtn ghost" data-act="close"><span>Continue</span></button><button class="mbtn primary" data-act="awayCollect">' + ic('sack') + '<span>Collect all</span></button>'
+        : '<button class="mbtn primary" data-act="close"><span>Continue</span></button>') + '</div></div>';
   };
 
   // Reports wait until nothing else is open; UI.tick shows the next one.
