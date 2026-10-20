@@ -55,6 +55,12 @@
     warn: svg('<path d="M12 2.6 1.9 20.6h20.2z" fill="#f2b13a"' + o + '/><path d="M12 9.2v5.2" stroke="' + INK + '" stroke-width="2.4" stroke-linecap="round"/><circle cx="12" cy="17.3" r="1.4" fill="' + INK + '"/>'),
     help: svg('<circle cx="12" cy="12" r="9.6" fill="#3f86e8"' + o + '/><path d="M9.3 9.3a2.8 2.8 0 1 1 3.8 2.6c-.8.4-1.1 1-1.1 1.8v.6" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round"/><circle cx="12" cy="17.6" r="1.4" fill="#fff"/>'),
     bolt: svg('<path d="M13.6 1.8 4.6 13.3h6.2l-1.3 8.9 9.9-12.4h-6.3z" fill="#f2c043"' + o + '/>'),
+    target: svg('<circle cx="12" cy="12" r="8.4" fill="#e8553d"' + o + '/><circle cx="12" cy="12" r="5.3" fill="#f3ecdc"' + o + ' stroke-width="1.2"/><circle cx="12" cy="12" r="2.2" fill="#e8553d"' + o + ' stroke-width="1.2"/>' +
+      '<path d="M12 1.5v4M12 18.5v4M1.5 12h4M18.5 12h4" stroke="' + INK + '" stroke-width="1.8" stroke-linecap="round"/>' + hl('M6.2 10.2a6.2 6.2 0 0 1 3.9-4')),
+    pick: svg('<path d="M4.6 20.2 15.2 9" stroke="' + INK + '" stroke-width="4.2" stroke-linecap="round"/><path d="M4.6 20.2 15.2 9" stroke="#a8743f" stroke-width="1.8" stroke-linecap="round"/>' +
+      '<path d="M8.6 3.6a11.8 11.8 0 0 1 11.8 11.8l-2.8-.9a8.8 8.8 0 0 0-8-8z" fill="#a9b3bd"' + o + '/>' + hl('M11 6a8.4 8.4 0 0 1 3.4 1.3')),
+    crate: svg('<rect x="3.6" y="6.4" width="16.8" height="14.6" rx="1" fill="#b47f45"' + o + '/><path d="M3.6 11.3h16.8M3.6 16.2h16.8" stroke="' + INK + '" stroke-width="1.1"/>' +
+      '<path d="M8 6.6v14.2M16 6.6v14.2" stroke="#7d5229" stroke-width="1.6"/><rect x="2.6" y="3.4" width="18.8" height="3.6" rx="1" fill="#d4a556"' + o + '/>' + hl('M5.4 9.6V8.6')),
     // plain glyphs that take the button's text color
     move: svg('<path d="M12 2.5v19M2.5 12h19M12 2.5 9.2 5.3M12 2.5l2.8 2.8M12 21.5l-2.8-2.8M12 21.5l2.8-2.8M2.5 12l2.8-2.8M2.5 12l2.8 2.8M21.5 12l-2.8-2.8M21.5 12l-2.8 2.8" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"/>'),
     rotate: svg('<path d="M19.6 12a7.6 7.6 0 1 1-2.2-5.4M19.6 3.4v4.8h-4.8" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>'),
