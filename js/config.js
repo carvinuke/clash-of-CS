@@ -143,11 +143,11 @@
         desc: 'Houses your army. More and better Garrisons let you field a bigger force.',
         max: [1, 2, 2, 3, 3, 4, 4, 5, 5],
         levels: levels({
-          hp:       [400, 460, 530, 610, 700, 800, 920, 1050],
-          capacity: [20, 25, 30, 35, 40, 45, 50, 55],
-          cost:     [250, 1200, 4000, 10000, 25000, 50000, 90000, 150000],
-          time:     [10, 60, 180, 420, 900, 1800, 3000, 4200],
-          core:     [1, 2, 3, 4, 5, 6, 7, 8]
+          hp:       [400, 460, 530, 610, 700, 800, 920, 1050, 1190],
+          capacity: [20, 25, 30, 35, 40, 45, 50, 55, 60],
+          cost:     [250, 1200, 4000, 10000, 25000, 50000, 90000, 150000, 230000],
+          time:     [10, 60, 180, 420, 900, 1800, 3000, 4200, 5400],
+          core:     [1, 2, 3, 4, 5, 6, 7, 8, 9]
         })
       },
       lab: {
@@ -179,10 +179,10 @@
         desc: 'Seat of the Iron Marshal. Upgrading the hall raises his level; he cannot fight while it is upgrading.',
         max: [0, 1, 1, 1, 1, 1, 1, 1, 1],
         levels: levels({
-          hp:   [700, 800, 920, 1050, 1200, 1380, 1580],
-          cost: [3000, 9000, 20000, 45000, 85000, 140000, 220000],
-          time: [120, 480, 1200, 2400, 3600, 4800, 6000],
-          core: [2, 3, 4, 5, 6, 7, 8]
+          hp:   [700, 800, 920, 1050, 1200, 1380, 1580, 1800],
+          cost: [3000, 9000, 20000, 45000, 85000, 140000, 220000, 320000],
+          time: [120, 480, 1200, 2400, 3600, 4800, 6000, 7200],
+          core: [2, 3, 4, 5, 6, 7, 8, 9]
         })
       },
       lodge: {
@@ -190,10 +190,10 @@
         desc: 'Home of the Storm Huntress. Upgrading the lodge raises her level; she cannot fight while it is upgrading.',
         max: [0, 0, 1, 1, 1, 1, 1, 1, 1],
         levels: levels({
-          hp:   [600, 690, 790, 900, 1020, 1160, 1320],
-          cost: [6000, 15000, 30000, 55000, 95000, 150000, 240000],
-          time: [240, 720, 1500, 2700, 3600, 4800, 6000],
-          core: [3, 4, 5, 6, 6, 7, 8]
+          hp:   [600, 690, 790, 900, 1020, 1160, 1320, 1500],
+          cost: [6000, 15000, 30000, 55000, 95000, 150000, 240000, 340000],
+          time: [240, 720, 1500, 2700, 3600, 4800, 6000, 7200],
+          core: [3, 4, 5, 6, 6, 7, 8, 9]
         })
       },
       station: {
@@ -297,7 +297,7 @@
         attack: { kind: 'rail', range: 11, period: 3, targeting: 'toughest', projectileSpeed: 24 },
         levels: levels({
           hp:   [1500, 1750, 2000, 2300],
-          dmg:  [180, 230, 290, 360],
+          dmg:  [165, 210, 265, 330],
           cost: [150000, 240000, 350000, 500000],
           time: [2400, 3600, 4800, 6000],
           core: [7, 7, 8, 9]
@@ -389,8 +389,8 @@
         max: [0, 0, 0, 0, 0, 0, 0, 0, 0],
         attack: { kind: 'thorns', range: 5, period: 1.2, targeting: 'aura' },
         levels: levels({
-          hp:   [4200, 5000, 5900, 7000],
-          dmg:  [22, 28, 35, 43],
+          hp:   [5200, 6200, 7300, 8600],
+          dmg:  [28, 35, 43, 52],
           slow: [0.5, 0.55, 0.6, 0.65],
           cost: [0, 0, 0, 0],
           time: [0, 0, 0, 0],
@@ -416,8 +416,8 @@
         max: [0, 0, 0, 0, 0, 0, 0, 0, 0],
         attack: { kind: 'cone', range: 7, period: 0.6, targeting: 'nearest', cone: 0.85 },
         levels: levels({
-          hp:   [11000, 12800, 14800, 17000],
-          dmg:  [55, 68, 82, 98],
+          hp:   [12500, 14500, 16800, 19300],
+          dmg:  [62, 76, 92, 110],
           cost: [0, 0, 0, 0],
           time: [0, 0, 0, 0],
           core: [1, 1, 1, 1]
@@ -450,84 +450,84 @@
         name: 'Scout', space: 1, speed: 2.6, range: 0.6, period: 0.8, target: 'resource', time: 4,
         bonusVsResource: 2,
         desc: 'Cheap and fast. Rushes generators and storages and hits them twice as hard.',
-        hp: [50, 57, 65, 75, 86], dmg: [9, 10, 12, 13, 15], cost: [25, 30, 35, 40, 45]
+        hp: [50, 57, 65, 75, 86, 98], dmg: [9, 10, 12, 13, 15, 17], cost: [25, 30, 35, 40, 45, 50]
       },
       ranger: {
         name: 'Ranger', space: 1, speed: 1.7, range: 3.5, period: 0.9, target: 'any', careful: true, time: 6,
         projectile: 'arrow',
         desc: 'Fires from range and prefers targets away from enemy turrets.',
-        hp: [36, 41, 47, 54, 62], dmg: [8, 9, 10, 12, 14], cost: [40, 48, 56, 64, 72]
+        hp: [36, 41, 47, 54, 62, 71], dmg: [8, 9, 10, 12, 14, 16], cost: [40, 48, 56, 64, 72, 80]
       },
       bruiser: {
         name: 'Bruiser', space: 5, speed: 1.1, range: 0.7, period: 1.6, target: 'defense', time: 20,
         desc: 'A walking fortress. Heads straight for defenses and soaks up their fire.',
-        hp: [420, 480, 550, 630, 720], dmg: [26, 30, 34, 39, 45], cost: [220, 260, 300, 340, 380]
+        hp: [460, 540, 630, 730, 840, 960], dmg: [26, 30, 34, 39, 45, 52], cost: [200, 235, 270, 305, 340, 375]
       },
       demo: {
         name: 'Demolisher', space: 2, speed: 2.2, range: 0.5, period: 0, target: 'wall', time: 10,
         suicide: true, splash: 1.4, wallMult: 14, structMult: 2,
         desc: 'Sprints to the wall blocking your army and blows it apart. Deals double damage to buildings too.',
-        hp: [34, 39, 45, 52, 60], dmg: [24, 28, 32, 37, 42], cost: [120, 140, 160, 180, 200]
+        hp: [34, 39, 45, 52, 60, 69], dmg: [24, 28, 32, 37, 42, 48], cost: [120, 140, 160, 180, 200, 220]
       },
       mage: {
         name: 'Arc Mage', space: 4, speed: 1.4, range: 3, period: 1.4, target: 'any', time: 18,
         projectile: 'orb', splash: 0.9,
         desc: 'Hurls crackling orbs that splash across clustered buildings.',
-        hp: [90, 104, 120, 138, 158], dmg: [30, 35, 40, 46, 53], cost: [300, 350, 400, 450, 500]
+        hp: [90, 104, 120, 138, 158, 180], dmg: [30, 35, 40, 46, 53, 61], cost: [270, 315, 360, 405, 450, 495]
       },
       mender: {
         name: 'Mender', space: 10, speed: 1.3, range: 4, period: 1, target: 'troop', time: 40,
         healRadius: 1.8,
         desc: 'Field medic drone. Follows the most wounded troops and heals everyone nearby.',
-        hp: [280, 320, 370, 425, 490], dmg: [28, 33, 38, 44, 50], cost: [600, 700, 800, 900, 1000]
+        hp: [280, 320, 370, 425, 490, 560], dmg: [28, 33, 38, 44, 50, 57], cost: [600, 700, 800, 900, 1000, 1100]
       },
       lancer: {
         name: 'Lancer', space: 3, speed: 2.0, range: 0.7, period: 1.2, target: 'any', time: 12,
-        charge: 3,
-        desc: 'Mounted spear rider. The first strike against each new target lands three times as hard.',
-        hp: [160, 184, 212, 244, 280], dmg: [22, 25, 29, 33, 38], cost: [90, 105, 120, 135, 150]
+        charge: 2.5,
+        desc: 'Mounted spear rider. The first strike against each new target lands two and a half times as hard.',
+        hp: [140, 160, 184, 212, 244, 280], dmg: [21, 24, 28, 32, 36, 41], cost: [120, 140, 160, 180, 200, 220]
       },
       gyro: {
         name: 'Gyrocopter', space: 5, speed: 1.6, range: 0.9, period: 2.2, target: 'any', time: 24,
         air: true, splash: 0.8,
         desc: 'Rotor craft that flies over walls and drops bombs. Blaster Turrets, Quake Mortars and Shock Mines cannot touch it, but Skyburst Batteries and Sky Snares are built to bring it down.',
-        hp: [160, 184, 212, 244, 280], dmg: [36, 41, 47, 54, 62], cost: [380, 440, 500, 560, 620]
+        hp: [160, 184, 212, 244, 280, 320], dmg: [32, 37, 42, 48, 55, 63], cost: [420, 480, 540, 600, 660, 720]
       },
       colossus: {
         name: 'Colossus', space: 18, speed: 0.75, range: 0.9, period: 2.4, target: 'defense', time: 90,
         splash: 1.2,
         desc: 'A walking siege engine with an enormous health pool. Marches on defenses and its stomp crushes everything around the target, walls included.',
-        hp: [2400, 2700, 3050, 3450, 3900], dmg: [60, 68, 77, 87, 98], cost: [1800, 2000, 2200, 2400, 2600]
+        hp: [2400, 2700, 3050, 3450, 3900, 4400], dmg: [60, 68, 77, 87, 98, 110], cost: [1800, 2000, 2200, 2400, 2600, 2800]
       },
       vaulter: {
         name: 'Vaulter', space: 4, speed: 2.4, range: 0.7, period: 1.1, target: 'defense', vault: true, time: 16,
         desc: 'Pole-vaulting raider who leaps clean over walls and heads straight for the nearest defense.',
-        hp: [190, 218, 250, 288, 330], dmg: [30, 35, 40, 46, 53], cost: [150, 175, 200, 225, 250]
+        hp: [180, 206, 236, 272, 312, 356], dmg: [28, 32, 37, 42, 48, 55], cost: [180, 210, 240, 270, 300, 330]
       },
       trebuchet: {
         name: 'Trebuchet', space: 10, speed: 0.6, range: 7.5, period: 3.2, target: 'defense', time: 45,
         projectile: 'boulder', splash: 1,
         desc: 'Crew-hauled siege engine. Lobs boulders at defenses from beyond the reach of most turrets, but it is slow and fragile up close.',
-        hp: [320, 360, 410, 470, 540], dmg: [95, 108, 124, 142, 162], cost: [900, 1000, 1100, 1200, 1300]
+        hp: [290, 325, 370, 425, 490, 560], dmg: [80, 92, 105, 120, 137, 156], cost: [950, 1050, 1150, 1250, 1350, 1450]
       },
       drake: {
         name: 'Ember Drake', space: 16, speed: 1.3, range: 2, period: 1.8, target: 'any', time: 70,
         air: true, splash: 1.1,
         desc: 'Young fire drake that flies over walls and breathes flame across a whole cluster of buildings.',
-        hp: [1250, 1400, 1580, 1780, 2000], dmg: [70, 79, 89, 100, 112], cost: [1500, 1650, 1800, 1950, 2100]
+        hp: [1000, 1120, 1260, 1420, 1600, 1800], dmg: [64, 72, 81, 91, 102, 114], cost: [1700, 1850, 2000, 2150, 2300, 2450]
       },
       // Heroes: one of each, never trained. Their level is the level of their building
       // (War Hall, Huntress Lodge), so the arrays below have one entry per building level.
       marshal: {
         name: 'Iron Marshal', hero: true, space: 0, speed: 1.5, range: 0.8, period: 1.2, target: 'any',
         desc: 'Armoured commander with a war hammer. Fights whatever is closest and leads from the front.',
-        hp: [900, 1100, 1350, 1650, 2000, 2400, 2850], dmg: [45, 55, 68, 82, 100, 120, 142]
+        hp: [900, 1100, 1350, 1650, 2000, 2400, 2850, 3350], dmg: [45, 55, 68, 82, 100, 120, 142, 166]
       },
       huntress: {
         name: 'Storm Huntress', hero: true, space: 0, speed: 1.7, range: 4.5, period: 0.9, target: 'any',
         projectile: 'arrow',
         desc: 'Long-range archer whose storm-charged arrows outrange most defenses.',
-        hp: [380, 460, 560, 680, 820, 980, 1160], dmg: [38, 46, 56, 68, 82, 98, 116]
+        hp: [380, 460, 560, 680, 820, 980, 1160, 1360], dmg: [38, 46, 56, 68, 82, 98, 116, 136]
       }
     },
     troopOrder: ['scout', 'ranger', 'bruiser', 'lancer', 'demo', 'vaulter', 'mage', 'gyro', 'mender', 'colossus', 'trebuchet', 'drake'],
@@ -537,20 +537,20 @@
     // After a raid a hero rests: recovery time is recoverMin (by level) times the share of health lost.
     heroes: {
       marshal: {
-        building: 'hall', recoverMin: [5, 7, 9, 11, 14, 16, 18],
+        building: 'hall', recoverMin: [5, 7, 9, 11, 14, 16, 18, 20],
         ability: {
           kind: 'rally', name: 'War Cry',
           desc: 'Heals the Marshal, calls in Scouts, and for a few seconds he and every troop near him hit harder and move faster.',
-          sec: [8, 8, 9, 9, 10, 10, 11], heal: [0.25, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55], radius: 4, dmgMult: 1.5, speedMult: 1.3,
-          summon: 'scout', summonN: [2, 2, 3, 3, 4, 4, 5]
+          sec: [8, 8, 9, 9, 10, 10, 11, 11], heal: [0.25, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6], radius: 4, dmgMult: 1.5, speedMult: 1.3,
+          summon: 'scout', summonN: [2, 2, 3, 3, 4, 4, 5, 6]
         }
       },
       huntress: {
-        building: 'lodge', recoverMin: [6, 8, 10, 12, 15, 17, 19],
+        building: 'lodge', recoverMin: [6, 8, 10, 12, 15, 17, 19, 21],
         ability: {
           kind: 'cloak', name: 'Smoke Veil',
           desc: 'Vanishes in smoke: defenses lose track of her, she heals, and her arrows hit far harder until she reappears.',
-          sec: [4, 4.5, 5, 5.5, 6, 6.5, 7], heal: [0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6], dmgMult: 2.5
+          sec: [4, 4.5, 5, 5.5, 6, 6.5, 7, 7.5], heal: [0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65], dmgMult: 2.5
         }
       }
     },
@@ -586,26 +586,26 @@
     research: {
       // Troop upgrades cost Energy. Level n+1 needs Research Lab level n.
       troops: {
-        scout:   { cost: [500, 2000, 6000, 15000], time: [30, 120, 360, 900] },
-        ranger:  { cost: [700, 2500, 7000, 18000], time: [40, 150, 420, 1000] },
-        bruiser: { cost: [1500, 5000, 12000, 30000], time: [60, 240, 600, 1500] },
-        demo:    { cost: [1200, 4000, 10000, 25000], time: [50, 200, 500, 1200] },
-        mage:    { cost: [6000, 15000, 35000, 60000], time: [240, 600, 1200, 2400] },
-        mender:  { cost: [10000, 25000, 50000, 90000], time: [300, 900, 1800, 3000] },
-        lancer:  { cost: [2500, 7000, 16000, 35000], time: [90, 300, 720, 1500] },
-        gyro:    { cost: [8000, 20000, 40000, 70000], time: [300, 720, 1500, 2700] },
-        colossus:{ cost: [20000, 40000, 70000, 110000], time: [600, 1200, 2400, 3600] },
-        vaulter: { cost: [2500, 7000, 16000, 35000], time: [90, 300, 720, 1500] },
-        trebuchet: { cost: [18000, 36000, 64000, 100000], time: [600, 1200, 2100, 3300] },
-        drake:   { cost: [30000, 55000, 90000, 140000], time: [900, 1800, 3000, 4200] }
+        scout:   { cost: [500, 2000, 6000, 15000, 30000], time: [30, 120, 360, 900, 1500] },
+        ranger:  { cost: [700, 2500, 7000, 18000, 36000], time: [40, 150, 420, 1000, 1700] },
+        bruiser: { cost: [1500, 5000, 12000, 30000, 55000], time: [60, 240, 600, 1500, 2400] },
+        demo:    { cost: [1200, 4000, 10000, 25000, 45000], time: [50, 200, 500, 1200, 2000] },
+        mage:    { cost: [6000, 15000, 35000, 60000, 100000], time: [240, 600, 1200, 2400, 3600] },
+        mender:  { cost: [10000, 25000, 50000, 90000, 140000], time: [300, 900, 1800, 3000, 4200] },
+        lancer:  { cost: [2500, 7000, 16000, 35000, 60000], time: [90, 300, 720, 1500, 2400] },
+        gyro:    { cost: [8000, 20000, 40000, 70000, 110000], time: [300, 720, 1500, 2700, 3600] },
+        colossus:{ cost: [20000, 40000, 70000, 110000, 160000], time: [600, 1200, 2400, 3600, 4800] },
+        vaulter: { cost: [2500, 7000, 16000, 35000, 60000], time: [90, 300, 720, 1500, 2400] },
+        trebuchet: { cost: [18000, 36000, 64000, 100000, 150000], time: [600, 1200, 2100, 3300, 4500] },
+        drake:   { cost: [30000, 55000, 90000, 140000, 200000], time: [900, 1800, 3000, 4200, 5400] }
       },
       // Settlement technologies cost Credits. lab = Research Lab level needed per tech level.
       techs: {
-        plating:    { name: 'Reinforced Plating', desc: 'Defense hit points', per: 0.08, res: 'credits', cost: [3000, 9000, 25000, 60000], time: [90, 300, 900, 1800], lab: [1, 2, 3, 4] },
-        targeting:  { name: 'Targeting Matrix', desc: 'Defense damage', per: 0.08, res: 'credits', cost: [3000, 9000, 25000, 60000], time: [90, 300, 900, 1800], lab: [1, 2, 3, 4] },
-        extraction: { name: 'Deep Extraction', desc: 'Resource production', per: 0.10, res: 'credits', cost: [2000, 7000, 20000, 50000], time: [60, 240, 720, 1500], lab: [1, 2, 3, 4] },
-        compression:{ name: 'Compression Storage', desc: 'Storage capacity', per: 0.10, res: 'credits', cost: [2500, 8000, 22000, 55000], time: [60, 240, 720, 1500], lab: [1, 2, 3, 4] },
-        drills:     { name: 'Rapid Drills', desc: 'Troop training speed', per: 0.15, res: 'credits', cost: [2000, 6000, 18000, 45000], time: [60, 240, 720, 1500], lab: [1, 2, 3, 4] }
+        plating:    { name: 'Reinforced Plating', desc: 'Defense hit points', per: 0.08, res: 'credits', cost: [3000, 9000, 25000, 60000, 120000], time: [90, 300, 900, 1800, 3000], lab: [1, 2, 3, 4, 5] },
+        targeting:  { name: 'Targeting Matrix', desc: 'Defense damage', per: 0.08, res: 'credits', cost: [3000, 9000, 25000, 60000, 120000], time: [90, 300, 900, 1800, 3000], lab: [1, 2, 3, 4, 5] },
+        extraction: { name: 'Deep Extraction', desc: 'Resource production', per: 0.10, res: 'credits', cost: [2000, 7000, 20000, 50000, 100000], time: [60, 240, 720, 1500, 2700], lab: [1, 2, 3, 4, 5] },
+        compression:{ name: 'Compression Storage', desc: 'Storage capacity', per: 0.10, res: 'credits', cost: [2500, 8000, 22000, 55000, 110000], time: [60, 240, 720, 1500, 2700], lab: [1, 2, 3, 4, 5] },
+        drills:     { name: 'Rapid Drills', desc: 'Troop training speed', per: 0.15, res: 'credits', cost: [2000, 6000, 18000, 45000, 90000], time: [60, 240, 720, 1500, 2700], lab: [1, 2, 3, 4, 5] }
       }
     },
 
@@ -672,7 +672,7 @@
         b: { blaster: [1, 1, 1, 1], mint: [2, 2, 1, 2], well: [1, 2, 1, 2], vault: [1, 1, 1, 1], tank: [1, 1, 1, 1], barracks: [1, 1, 1, 1], garrison: [1, 1, 1, 1], station: [1, 1, 1, 1] },
         loot: [900, 1200], bonus: 200, armyPower: 10 },
       { core: 2, area: 26, walls: [24, 36], wallLv: [1, 2],
-        b: { blaster: [2, 2, 1, 2], spire: [1, 1, 1, 2], brazier: [0, 1, 1, 1], mine: [1, 2, 1, 1], mint: [3, 3, 2, 3], well: [2, 3, 2, 3], vault: [1, 1, 2, 2], tank: [1, 1, 2, 2], barracks: [1, 1, 1, 2], garrison: [1, 2, 1, 2], lab: [1, 1, 1, 1], station: [2, 2, 1, 1] },
+        b: { blaster: [2, 2, 2, 2], spire: [1, 2, 1, 2], brazier: [1, 1, 1, 1], mine: [1, 2, 1, 1], mint: [3, 3, 2, 3], well: [2, 3, 2, 3], vault: [1, 1, 2, 2], tank: [1, 1, 2, 2], barracks: [1, 1, 1, 2], garrison: [1, 2, 1, 2], lab: [1, 1, 1, 1], station: [2, 2, 1, 1] },
         loot: [2200, 3200], bonus: 500, armyPower: 22 },
       { core: 3, area: 30, walls: [44, 60], wallLv: [2, 3],
         b: { blaster: [3, 3, 2, 3], spire: [2, 2, 2, 3], brazier: [1, 1, 1, 2], mortar: [1, 1, 1, 1], frost: [1, 1, 1, 1], mine: [2, 3, 1, 1], mint: [3, 4, 3, 4], well: [3, 4, 3, 4], vault: [2, 2, 3, 3], tank: [2, 2, 3, 3], barracks: [2, 2, 2, 3], garrison: [2, 2, 2, 3], lab: [1, 1, 2, 2], station: [2, 3, 1, 2] },
@@ -711,8 +711,8 @@
       maxDestruction: 0.6,             // raiders withdraw once this much of the base is down
       steal: { storageFraction: 0.12, collectorFraction: 0.4, capByCore: [400, 1200, 3500, 9000, 20000, 40000, 60000, 85000, 110000] },
       // Army housing space NPC raiders bring, by the player's Command Core level.
-      armySpaceByCore: [8, 18, 28, 40, 55, 70, 85, 100, 115],
-      troopLevelByCore: [1, 1, 2, 2, 3, 4, 4, 5, 5],
+      armySpaceByCore: [9, 24, 52, 80, 105, 145, 185, 230, 260],
+      troopLevelByCore: [1, 1, 2, 3, 4, 5, 5, 6, 6],
       modes: {
         off: { label: 'Off', freq: 0 },
         relaxed: { label: 'Relaxed', freq: 0.5 },
