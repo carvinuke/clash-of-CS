@@ -125,7 +125,7 @@ tests/            optional logic checks for developers (plain Node, no packages)
 
 To rebalance the game, edit the numbers in `js/config.js` and reload the page. Existing saves keep working because saves are validated and missing fields are filled with defaults on load.
 
-If you change the game logic and have Node.js installed, `node tests/logic-test.js` checks placement rules, timers, production caps, every settlement layout, battle determinism, offline raids and save recovery. The game itself never needs Node.
+If you change the game logic and have Node.js installed, `node tests/logic-test.js` checks placement rules, timers, production caps, every settlement layout, battle determinism, offline raids and save recovery. The game itself never needs Node. For balance work, `node tests/balance-sim.js [cores] [runs]` simulates seeded raids at every Command Core level (a maxed player against on-level settlements, bosses and leagues, single-troop armies, and NPC raids on maxed preset bases) and prints win rates, destruction and per-defense damage.
 
 ## Credits
 
