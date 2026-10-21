@@ -23,6 +23,7 @@ It works in current versions of Chrome, Edge, Firefox and Safari, on desktop and
 - **Heroes.** Build the War Hall to summon the Iron Marshal and the Huntress Lodge for the Storm Huntress. Heroes are never trained or used up: they join every raid, guard your base against raiders when they're rested, level up with their building, and after a raid rest for a while depending on how hurt they got. Tap a deployed hero's button (or press its number) once per battle for its ability: the Marshal's War Cry heals him, calls in Scouts and rallies nearby troops; the Huntress's Smoke Veil hides her from defenses and powers up her arrows.
 - **Raid.** Open the **World Map**, pick a settlement and attack. Look around first, then tap outside the red zone to deploy (hold to deploy a stream). Destroy half the buildings or the Command Core to win; stars, loot and renown depend on how much you destroy. Surviving troops come home.
 - **Defend.** Once your starting protection runs out, NPC settlements raid you, more often if you raided them. A warning banner appears before each raid, and you watch the fight live with your defenses doing the work. Raiders can only take a capped share of your resources, never destroy your buildings for good, and leave a shield behind. Engineering Stations repair damage automatically.
+- **Events.** A few times a day a limited-time event starts at random: **Loot Frenzy** doubles raid loot, **Bumper Harvest** doubles generator output, **War Drills** trains troops and brews spells twice as fast, and a **Raider Horde** sends raids three times as often but pays a bounty for every raid you repel (only while raids are on). The running event and its timer show in the top bar; tap it, or open **Goals > Events**, to see what comes next. Events keep running while the game is closed.
 
 A short tutorial walks through the first steps; you can skip it and press **H** for help at any time.
 
@@ -109,6 +110,7 @@ js/state.js       new game, versioned save/load, validation and recovery of dama
 js/pathfinding.js A* for troops (walls cost the time it takes to break them)
 js/battle.js      fixed-tick, deterministic battle simulation for raids and defenses
 js/npc.js         the fifteen settlements, their layouts, loot, difficulty and world activity
+js/events.js      the limited-time event schedule (seeded, so it needs no saved state)
 js/presets.js     three ready-made base layouts per Command Core level
 js/threat.js      scheduling NPC raids on your base and applying their results
 js/timesys.js     catching up after an absence, including offline raids

@@ -551,7 +551,7 @@
       kind: 'attack', seed: (U.hash(id) ^ (t % 2147483647)) >>> 0, biome: NPC.faction(s).biome, name: s.name,
       targetId: id, buildings: NPC.battleBuildings(st, s, t), troops: brought, troopLevels: levels,
       spells: spells, spellLv: Army.forgeLevel(st),
-      timeLimit: C.battle.raidSeconds, meta: { brought: brought, spells: spells, difficulty: diff.label, tier: s.tier }
+      timeLimit: C.battle.raidSeconds, meta: { brought: brought, spells: spells, difficulty: diff.label, tier: s.tier, lootMult: CS.Events.mult(st, 'loot', t) }
     });
     G.lastBattle = null; G.result = null;
     G.mode = 'raid'; G.acc = 0; G.speed = 1; G.ending = 0; G.battleWall = t;
@@ -691,7 +691,10 @@
     const bonus = res.victory ? Math.round(T.bonus * res.stars / 3) : 0;
     // a boss stronghold pays its reward on the first victory only
     const reward = s.defense && res.victory && !NPC.rec(st, s.id).claimed ? s.reward : null;
-    const want = { credits: res.loot.credits + bonus + (reward ? reward.credits : 0), energy: res.loot.energy + bonus + (reward ? reward.energy : 0) };
+    // a Loot Frenzy running when the raid began multiplies its loot and victory bonus
+    const lx = (b.meta.lootMult || 1) - 1;
+    const extra = { credits: Math.round((res.loot.credits + bonus) * lx), energy: Math.round((res.loot.energy + bonus) * lx) };
+    const want = { credits: res.loot.credits + bonus + extra.credits + (reward ? reward.credits : 0), energy: res.loot.energy + bonus + extra.energy + (reward ? reward.energy : 0) };
     const gained = { credits: Eco.add(st, 'credits', want.credits), energy: Eco.add(st, 'energy', want.energy) };
     const wasted = want.credits - gained.credits + want.energy - gained.energy;
     let renown = 0;
@@ -715,7 +718,7 @@
       U.pct(res.destruction) + '% destroyed, ' + res.stars + (res.stars === 1 ? ' star, ' : ' stars, ') +
       U.fmt(gained.credits) + ' Credits and ' + U.fmt(gained.energy) + ' Energy looted.', t);
     G.result = {
-      s: s, res: res, gained: gained, bonus: bonus, reward: reward, wasted: wasted, renown: renown, notes: notes,
+      s: s, res: res, gained: gained, bonus: bonus, reward: reward, extra: lx > 0 ? extra : null, wasted: wasted, renown: renown, notes: notes,
       tips: res.victory ? [] : explainLoss(res, b), difficulty: b.meta.difficulty
     };
     sfx(res.victory ? 'victory' : 'defeat');
@@ -1229,6 +1232,18 @@
     }
   }
 
+  // Tells the player once about each event, also when they come back while it is running.
+  function announceEvent(st, t) {
+    const e = CS.Events.at(st, t);
+    if (!e || st.events.seen === e.key) return;
+    st.events.seen = e.key;
+    const left = U.fmtTime((e.end - t) / 1000);
+    toast(e.def.name + ' for ' + left + '! ' + e.def.desc, 'good', e.def.icon);
+    CS.Log.add(st, 'event', e.def.name + ' began: ' + e.def.desc + ' Ends in ' + left + '.', t);
+    sfx('coins');
+    refresh();
+  }
+
   // ---------------------------------------------------------------- main loop
   let lastFrame = 0, stepAcc = 0, threatAcc = 0, saveAcc = 0, uiAcc = 0;
   const reported = {};
@@ -1251,6 +1266,7 @@
       threatCtx.busy = !!G.battle || G.mode !== 'village';
       if (!G.battle) Threat.update(st, t, threatCtx);
       else if (st.threat.next) Threat.update(st, t, threatCtx);
+      announceEvent(st, t);
     }
     saveAcc += dt;
     if (saveAcc >= C.autosaveSec) { saveAcc = 0; G.save(); }

@@ -54,7 +54,7 @@
 
   Eco.production = function (state) {
     const p = { credits: 0, energy: 0 };
-    const m = CS.Research.mult(state, 'extraction');
+    const m = CS.Research.mult(state, 'extraction') * CS.Events.mult(state, 'production', CS.Clock.now());
     state.base.buildings.forEach(function (b) {
       const def = C.buildings[b.type];
       if (def.produces && Base.isFunctional(b)) p[def.produces] += Base.levelDef(b.type, b.level).rate * m;
@@ -319,7 +319,8 @@
   /*
    * Advances every home-base system from t0 to t1 (ms timestamps). The interval is split at
    * each timer completion so, for example, a generator finished mid-absence only produces
-   * after it was finished. opts.prodScale shrinks production for capped offline absences.
+   * after it was finished, and at each event start and end so an event's speed-ups cover exactly
+   * its window. opts.prodScale shrinks production for capped offline absences.
    */
   Eco.advance = function (state, t0, t1, opts) {
     opts = opts || {};
@@ -331,6 +332,7 @@
     state.base.buildings.forEach(function (b) { if (b.timer && b.timer.end > t0 && b.timer.end < t1) marks.push(b.timer.end); });
     const ra = state.research.active;
     if (ra && ra.end > t0 && ra.end < t1) marks.push(ra.end);
+    Array.prototype.push.apply(marks, CS.Events.marks(state, t0, t1));
     marks.sort(function (a, b) { return a - b; });
     marks.push(t1);
     completeTimers(state, t0, events);
@@ -340,11 +342,12 @@
     let t = t0;
     for (let i = 0; i < marks.length; i++) {
       const m = marks[i];
+      const prodX = CS.Events.mult(state, 'production', t), trainX = CS.Events.mult(state, 'training', t);
       while (t < m) {
         const left = (m - t) / 1000;
         const dt = left > step ? step : left;
-        produce(state, dt, scale, opts.report);
-        CS.Army.advance(state, dt, events);
+        produce(state, dt * prodX, scale, opts.report);
+        CS.Army.advance(state, dt * trainX, events);
         repair(state, dt, events);
         t = left > step ? t + step * 1000 : m;
       }

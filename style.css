@@ -289,6 +289,15 @@ input[type="range"] { width: 180px; accent-color: var(--brass); }
 .hb-stat b { font-size: var(--fs-md); font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .hb-stat small { color: var(--cream-3); font-size: var(--fs-micro); white-space: nowrap; }
 .hb-stat.alert b { color: var(--amber); }
+.hb-stat.event { box-shadow: inset 0 -2px 0 var(--ev); }
+.hb-stat.event b { color: var(--ev); }
+.hb-stat.event > .ic { animation: evpulse 2.4s ease-in-out infinite; }
+@keyframes evpulse { 50% { transform: scale(1.12); } }
+@media (prefers-reduced-motion: reduce) { .hb-stat.event > .ic { animation: none; } }
+.ev-art { display: grid; place-items: center; width: 100%; height: 100%; border-radius: inherit; box-shadow: inset 0 0 0 2px var(--ev); }
+.ev-art > .ic { width: 30px; height: 30px; }
+.grow .rcost.ev-when { flex-direction: column; align-items: flex-end; gap: 3px; color: var(--cream-2); }
+.ev-live { color: var(--brass-hi); white-space: nowrap; }
 
 /* ---- right rail: one column of equal buttons; Attack leads in red */
 #side { position: fixed; top: var(--edge); right: var(--edge); display: flex; flex-direction: column; gap: 6px; }
