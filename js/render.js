@@ -1074,7 +1074,7 @@
   }
 
   // Health bar height above a troop's feet, in px at zoom 1 (flyers and big troops sit higher).
-  const BAR_Y = { bruiser: 40, mender: 42, gyro: 46, lancer: 40, colossus: 56, marshal: 44, huntress: 36, vaulter: 38, trebuchet: 46, drake: 58 };
+  const BAR_Y = { bruiser: 40, mender: 42, gyro: 46, lancer: 40, colossus: 56, marshal: 44, huntress: 36, vaulter: 38, trebuchet: 46, drake: 58, griffin: 54, golem: 62 };
 
   function drawOverlays(ctx, scene, time) {
     const z = R.cam.zoom;

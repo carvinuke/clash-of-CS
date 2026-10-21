@@ -1252,6 +1252,47 @@
     return null;
   };
 
+  // Pyre Projector: a brick firebox on an iron plinth with glowing grates; the turning furnace is live.
+  DRAW.pyre = function (g, w, h, lv, team, rng) {
+    block(g, rng, 0.15, 0.15, 2.85, 2.85, 0, 9, MAT.stoneDark, { tex: 'stone', course: 4, block: 12 });
+    block(g, rng, 0.4, 0.4, 2.6, 2.6, 9, 24, MAT.brick, { tex: 'brick', course: 6, block: 10, top: shade(MAT.iron, TOP - 0.1) });
+    ['L', 'R'].forEach(function (s) {
+      onFace(g, s, 0.4, 0.4, 2.6, 2.6, 9, 24, function (c, len, ht) {
+        // a glowing grate in each face, the team band above it
+        rrect(c, len / 2 - 8, -ht * 0.62, 16, 7, 1.5); c.fillStyle = '#2a1712'; c.fill();
+        c.fillStyle = '#ff8a2a'; for (let x = len / 2 - 6; x < len / 2 + 6; x += 3) c.fillRect(x, -ht * 0.62 + 1.5, 1.6, 4);
+        c.fillStyle = alpha(team, 0.9); c.fillRect(len / 2 - 9, -ht + 1.5, 18, 2.6);
+      });
+    });
+    // fuel tanks on the back corners
+    [[0.75, 0.75], [2.25, 0.75], [0.75, 2.25]].forEach(function (q) {
+      cyl(g, rng, q[0], q[1], 0.24, 24, 36, MAT.copper, { tex: 'bands', top: shade(MAT.copper, TOP) });
+    });
+    if (lv >= 2) block(g, rng, 0.38, 0.38, 2.62, 2.62, 22.5, 24, MAT.gold, { top: false });
+    return null;
+  };
+
+  // Ironfall Battery: a riveted casemate on a stone plinth with shells stacked beside it; the three barrels are live.
+  DRAW.battery = function (g, w, h, lv, team, rng) {
+    block(g, rng, 0.15, 0.15, 2.85, 2.85, 0, 8, MAT.stoneDark, { tex: 'stone', course: 4, block: 12 });
+    block(g, rng, 0.4, 0.4, 2.6, 2.6, 8, 20, '#6d757e', { tex: 'metal', block: 12, top: shade('#6d757e', TOP - 0.08) });
+    ['L', 'R'].forEach(function (s) {
+      onFace(g, s, 0.4, 0.4, 2.6, 2.6, 8, 20, function (c, len, ht) {
+        c.fillStyle = shade(MAT.brass, s === 'L' ? FL : FR); c.fillRect(0, -ht + 1, len, 2);
+        c.fillStyle = alpha(team, 0.9); c.fillRect(4, -ht * 0.5 - 1.5, len - 8, 3);
+        c.fillStyle = '#2d2f33'; for (let x = 4; x < len - 2; x += 7) c.fillRect(x, -3.5, 1.4, 1.4);
+      });
+    });
+    [[0.7, 2.25], [2.25, 0.7]].forEach(function (q) {
+      [[0, 0, 0], [0.2, 0, 0], [0.1, 0.1, 4]].forEach(function (o) {
+        const pt = P(q[0] + o[0], q[1] + o[1], 20 + o[2]);
+        g.beginPath(); g.arc(pt[0], pt[1] - 3, 3, 0, Math.PI * 2); g.fillStyle = '#2d2f33'; g.fill(); g.strokeStyle = INKLINE; g.lineWidth = 0.7; g.stroke();
+      });
+    });
+    if (lv >= 2) block(g, rng, 0.38, 0.38, 2.62, 2.62, 18.5, 20, MAT.gold, { top: false });
+    return null;
+  };
+
   // Siege Charge: a cluster of powder kegs wired to a plunger.
   DRAW.charge = function (g, w, h, lv, team, rng) {
     disk(g, 1, 1, 0.5, 0.78, '#4a3f33', EDGE);
@@ -1337,7 +1378,7 @@
   };
 
   // Walls: 1 palisade, 2 fieldstone, 3 sandstone, 4 banded granite, 5 steel, 6 obsidian and gold,
-  // 7 bronze-banded basalt, 8 glazed jade stone, 9 sunstone with a white-gold glow.
+  // 7 bronze-banded basalt, 8 glazed jade stone, 9 sunstone with a white-gold glow, 10 runed bluesteel.
 
   const WALL = [null,
     { col: '#9b6a3e', H: 17 },
@@ -1348,7 +1389,8 @@
     { col: MAT.obsidian, tex: 'dressed', H: 22, cap: MAT.gold, glow: '#b67cff' },
     { col: '#55524f', tex: 'dressed', H: 23, band: MAT.copper, cap: MAT.copper },
     { col: '#5f9a84', tex: 'dressed', H: 24, band: MAT.gold, cap: MAT.gold },
-    { col: '#efd9a4', tex: 'dressed', H: 25, band: MAT.gold, cap: MAT.gold, glow: '#fff3c4' }];
+    { col: '#efd9a4', tex: 'dressed', H: 25, band: MAT.gold, cap: MAT.gold, glow: '#fff3c4' },
+    { col: '#3f4656', tex: 'metal', H: 26, band: '#7fe7ff', cap: MAT.steel, glow: '#7fe7ff' }];
   Spr.WALL = WALL;
   function drawWall(g, rng, lv, mask) {
     const W = WALL[U.clamp(lv, 1, WALL.length - 1)], H = W.H;
@@ -1399,7 +1441,7 @@
     hall: [MAT.stone, MAT.brass], lodge: [MAT.plank, MAT.canvas],
     flak: [MAT.stoneCool, MAT.iron], rail: [MAT.dressed, MAT.copper], snare: [MAT.iron, MAT.brass], bunker: [MAT.stoneCool, MAT.steel],
     forge: [MAT.brick, MAT.timber], brazier: [MAT.stone, MAT.iron], hail: [MAT.stoneCool, MAT.ice], tempest: [MAT.steel, MAT.copper],
-    charge: [MAT.plank, MAT.iron], thornheart: ['#5b3d24', '#4f6b34'], bombard: [MAT.sandstone, MAT.brass], idol: [MAT.obsidian, '#ff7a2a']
+    charge: [MAT.plank, MAT.iron], pyre: [MAT.brick, MAT.iron], battery: ['#6d757e', MAT.stoneDark], thornheart: ['#5b3d24', '#4f6b34'], bombard: [MAT.sandstone, MAT.brass], idol: [MAT.obsidian, '#ff7a2a']
   };
   // Drawn under the inked rubble, so the translucent mark never picks up the ink outline.
   // One path per tone, so overlapping blobs read as a single even scorch.
@@ -1470,10 +1512,10 @@
 
   // ---------------------------------------------------------------- sprite cache
   const ZMAX = { core: 112, spire: 118, lance: 62, well: 86, tank: 60, lab: 94, mint: 66, barracks: 56, garrison: 66, station: 52, blaster: 26, mortar: 46, frost: 66, vault: 42, mine: 8, wall: 34, hall: 62, lodge: 52, flak: 24, rail: 36, snare: 12, bunker: 40,
-    forge: 60, brazier: 30, hail: 50, tempest: 74, charge: 14, thornheart: 76, bombard: 38, idol: 30 };
+    forge: 60, brazier: 30, hail: 50, tempest: 74, charge: 14, pyre: 38, battery: 26, thornheart: 76, bombard: 38, idol: 30 };
   // Visual height of each building's main mass (for picking, bars and projectile impacts).
   Spr.TOP = { core: 100, spire: 74, lance: 60, well: 72, tank: 58, lab: 82, mint: 47, barracks: 48, garrison: 32, station: 40, blaster: 28, mortar: 24, frost: 56, vault: 39, mine: 8, wall: 22, hall: 36, lodge: 34, flak: 30, rail: 38, snare: 8, bunker: 31,
-    forge: 40, brazier: 34, hail: 58, tempest: 80, charge: 10, thornheart: 80, bombard: 58, idol: 60 };
+    forge: 40, brazier: 34, hail: 58, tempest: 80, charge: 10, pyre: 48, battery: 52, thornheart: 80, bombard: 58, idol: 60 };
   const PAD = 8;
   const cache = new Map();
 
@@ -1572,6 +1614,8 @@
     hail: function () { return [['b', 0.25, 0.25, 2.75, 2.75, 7, 1], ['c', 1.5, 1.5, 1.1, 52]]; },
     tempest: function () { return [['b', 0.3, 0.3, 2.7, 2.7, 10, 1], ['c', 1.5, 1.5, 0.45, 80]]; },
     charge: function () { return [['c', 1, 1, 0.7, 9, 1]]; },
+    pyre: function () { return [['b', 0.15, 0.15, 2.85, 2.85, 24, 1], ['c', 1.5, 1.5, 0.65, 48]]; },
+    battery: function () { return [['b', 0.15, 0.15, 2.85, 2.85, 20, 1], ['c', 1.5, 1.5, 0.9, 52]]; },
     thornheart: function () { return [['c', 2, 2, 1.85, 6, 1], ['c', 2, 2, 0.62, 44], ['c', 2, 2, 1.2, 70]]; },
     bombard: function () { return [['b', 0.2, 0.2, 3.8, 3.8, 10, 1], ['b', 0.6, 0.6, 3.4, 3.4, 22], ['c', 0.55, 0.55, 0.48, 34], ['c', 3.45, 0.55, 0.48, 34], ['c', 0.55, 3.45, 0.48, 34], ['c', 3.45, 3.45, 0.48, 34], ['c', 2, 2, 0.6, 60]]; },
     idol: function () { return [['b', 0.15, 0.15, 3.85, 3.85, 8, 1], ['b', 1, 1, 3, 3, 26], ['c', 2, 2, 0.6, 62]]; }
@@ -2111,6 +2155,37 @@
         }
         break;
       }
+      case 'pyre': {
+        // a squat furnace drum on a turntable; its flared nozzle glows hotter while it breathes fire
+        const ang = info.angle || 0, recoil = info.recoil || 0, dx = Math.cos(ang), dy = Math.sin(ang);
+        prism(ctx, rotRect(1.5, 1.5, ang, 1.1, 1.1), 24, 28, MAT.iron, { top: shade(MAT.iron, TOP) });
+        const drum = function () { cyl(ctx, null, 1.5, 1.5, 0.62, 28, 46, '#5a3d33', { tex: 'bands', top: shade('#5a3d33', 0.2) }); };
+        const nozzle = function () {
+          const base = P(1.5, 1.5, 38), tip = P(1.5 + dx * 1.4, 1.5 + dy * 1.4, 39 - recoil * 2);
+          tube(ctx, base, tip, 8, '#3a4048');
+          ctx.beginPath(); ctx.ellipse(tip[0], tip[1], 6.6, 4.2, 0, 0, Math.PI * 2); ctx.fillStyle = MAT.brass; ctx.fill(); ctx.strokeStyle = INKLINE; ctx.lineWidth = 0.9; ctx.stroke();
+          glowDot(ctx, tip[0], tip[1], 7 + recoil * 8 + Math.sin(time * 9) * 1, 'rgba(255,170,60,0.9)', 'rgba(255,90,30,0)');
+        };
+        const plate = function () { const c = P(1.5, 1.5, 47); ctx.beginPath(); ctx.arc(c[0], c[1], 4.4, 0, Math.PI * 2); ctx.fillStyle = team; ctx.fill(); ctx.strokeStyle = INKLINE; ctx.lineWidth = 0.8; ctx.stroke(); };
+        if (dx + dy < 0) { nozzle(); drum(); plate(); } else { drum(); plate(); nozzle(); }
+        break;
+      }
+      case 'battery': {
+        // three stubby mortars side by side on a turning carriage, raised high
+        const ang = info.angle || 0, recoil = info.recoil || 0, dx = Math.cos(ang), dy = Math.sin(ang);
+        prism(ctx, rotRect(1.5, 1.5, ang, 1.4, 1.2), 20, 28, '#4d545d', { top: shade('#4d545d', TOP) });
+        const tubes = function () {
+          [-0.38, 0, 0.38].forEach(function (s, i) {
+            const base = P(1.5 - dx * 0.2 - dy * s, 1.5 - dy * 0.2 + dx * s, 29);
+            const tip = P(1.5 + dx * (1 - recoil * 0.15) - dy * s, 1.5 + dy * (1 - recoil * 0.15) + dx * s, 52 + (i === 1 ? 3 : 0) - recoil * 4);
+            tube(ctx, base, tip, 9, '#3a4048');
+            ctx.beginPath(); ctx.ellipse(tip[0], tip[1], 4.6, 2.8, 0, 0, Math.PI * 2); ctx.fillStyle = '#16181b'; ctx.fill(); ctx.strokeStyle = INKLINE; ctx.lineWidth = 0.8; ctx.stroke();
+          });
+        };
+        const band = function () { const c = P(1.5, 1.5, 30); ctx.beginPath(); ctx.ellipse(c[0], c[1], 9, 4.2, 0, 0, Math.PI * 2); ctx.fillStyle = team; ctx.fill(); ctx.strokeStyle = INKLINE; ctx.lineWidth = 0.9; ctx.stroke(); };
+        if (dx + dy < 0) { tubes(); band(); } else { band(); tubes(); }
+        break;
+      }
       case 'bombard': {
         const ang = info.angle || 0, recoil = info.recoil || 0, dx = Math.cos(ang), dy = Math.sin(ang);
         prism(ctx, rotRect(2, 2, ang, 1.4, 1.4), 22, 30, '#7a5a34', { top: shade('#7a5a34', TOP) });
@@ -2235,7 +2310,7 @@
   }
 
   // Shadow and team-ring size per troop.
-  const BIG = { bruiser: 1.3, scout: 0.9, lancer: 1.25, colossus: 1.9, marshal: 1.2, gyro: 0.9, trebuchet: 1.5, drake: 1.3 };
+  const BIG = { bruiser: 1.3, scout: 0.9, lancer: 1.25, colossus: 1.9, marshal: 1.2, gyro: 0.9, trebuchet: 1.5, drake: 1.3, griffin: 1.3, golem: 2.1 };
 
   // Draws one troop with its feet at the origin, facing +x. a: {walk, lunge, flick, hover, spin, skin, idle}
   function drawTroopBody(c, type, team, a) {
@@ -2521,16 +2596,61 @@
       if (a.flick || lunge) glowDot(c, 11.6, -10.6, 2.6 + lunge * 3, 'rgba(255,200,90,0.9)', 'rgba(255,120,40,0)');
       c.beginPath(); c.moveTo(1, -8.5); c.lineTo(-3, -18 - flap * 5); c.lineTo(6, -14 - flap * 3.5); c.closePath(); inkFill(c, shade(hide, 0.1));
       c.strokeStyle = shade(hide, -0.45); c.lineWidth = 0.7; line(c, [1, -8.5], [1.4, -16 - flap * 4]);
+    } else if (type === 'griffin') {
+      // armoured knight on a griffin: hovers on broad wings, spear lowered for the dive
+      const hov = 12 + Math.sin(a.hover) * 2;
+      c.translate(0, bob - hov);
+      c.scale(1.15, 1.15);
+      const fur = '#c8964f', feather = '#efe4cf', flap = Math.sin(a.hover * 2);
+      c.beginPath(); c.moveTo(-1, -9); c.lineTo(-8.5, -15.5 - flap * 3); c.lineTo(2, -12.5 - flap * 2); c.closePath(); inkFill(c, shade(feather, -0.25));
+      c.beginPath(); c.moveTo(-6, -7); c.quadraticCurveTo(-11, -8, -12, -12); c.lineWidth = 1.6; c.strokeStyle = shade(fur, -0.4); c.stroke();
+      limb(c, -4.5, -5, -6, -1.4, 1.8, shade(fur, -0.2));
+      c.beginPath(); c.ellipse(0, -6.5, 6.4, 3.4, -0.1, 0, Math.PI * 2); inkFill(c, fur);
+      limb(c, 4, -5.5, 5.8 + lunge * 1.5, -1.6, 1.5, '#d9a441');
+      c.beginPath(); c.moveTo(4, -8); c.quadraticCurveTo(6, -12, 7.6, -12.6); c.lineTo(9.4, -10); c.quadraticCurveTo(7, -7, 5, -5); c.closePath(); inkFill(c, feather);
+      c.beginPath(); c.moveTo(9.2, -12); c.lineTo(12, -10.6); c.lineTo(9.2, -9.6); c.closePath(); inkFill(c, MAT.gold, 0.7);
+      c.fillStyle = '#1d140e'; c.fillRect(8, -11.6, 1, 1);
+      c.beginPath(); c.moveTo(-2, -8.5); c.lineTo(-10, -13 - flap * 4); c.lineTo(-8, -9.5 - flap * 2); c.lineTo(-11, -9 - flap * 2.5); c.lineTo(-3, -5.5); c.closePath(); inkFill(c, feather);
+      c.strokeStyle = shade(feather, -0.35); c.lineWidth = 0.7; line(c, [-2.5, -8], [-9, -11.6 - flap * 3.4]);
+      // rider
+      body(c, [[-2.6, -17], [2.4, -17], [2.8, -10], [-3, -10]], '#a3adb7');
+      c.fillStyle = team; c.fillRect(-0.6, -17, 1.4, 7);
+      head(c, 0, -19.8, 3, skin);
+      c.beginPath(); c.arc(0, -20.4, 3.4, Math.PI * 0.95, Math.PI * 2.05); c.closePath(); inkFill(c, '#7d8892');
+      c.fillStyle = team; c.beginPath(); c.moveTo(-0.6, -23.6); c.lineTo(-4.4, -25.6); c.lineTo(-1.4, -22.8); c.closePath(); c.fill();
+      c.save(); c.translate(1.5, -13.5); c.rotate(0.12 + lunge * 0.35);
+      c.strokeStyle = INKLINE; c.lineWidth = 2.4; line(c, [-3, 0], [12, 0]);
+      c.strokeStyle = MAT.timber; c.lineWidth = 1.2; line(c, [-3, 0], [12, 0]);
+      c.beginPath(); c.moveTo(11, -1.4); c.lineTo(15, 0); c.lineTo(11, 1.4); c.closePath(); inkFill(c, '#e4e9ee', 0.7);
+      c.restore();
+    } else if (type === 'golem') {
+      // magma golem: a hulk of dark rock split by glowing lava seams
+      c.scale(1.7, 1.7);
+      const rock = '#4f4440', lava = '#ff8a2a';
+      legs(c, a.walk * 0.5, shade(rock, -0.1), 4, 6, null);
+      limb(c, -6.5, -16, -8.5 - sw * 1.2, -7, 4, shade(rock, -0.2));
+      c.beginPath(); c.arc(-8.5 - sw * 1.2, -6.5, 3, 0, Math.PI * 2); inkFill(c, shade(rock, -0.25));
+      body(c, [[-7.5, -21], [7.5, -21], [6.2, -6.5], [-6.2, -6.5]], rock);
+      c.strokeStyle = lava; c.lineWidth = 1.1; c.lineCap = 'round';
+      c.beginPath(); c.moveTo(-5, -19); c.lineTo(-2, -14); c.lineTo(-4, -9); c.moveTo(3, -20); c.lineTo(1.5, -15); c.lineTo(4.6, -11); c.lineTo(3, -7.5); c.stroke();
+      glowDot(c, 0, -14, 4 + (a.flick ? 0.8 : 0), 'rgba(255,170,60,0.9)', 'rgba(255,110,30,0)');
+      c.fillStyle = team; c.fillRect(-7, -12.6, 14, 1.6);
+      c.beginPath(); c.arc(0.5, -23.4, 3.4, 0, Math.PI * 2); inkFill(c, shade(rock, 0.08));
+      c.fillStyle = '#ffd34d'; c.fillRect(1.2, -24.2, 1.6, 1.2); c.fillRect(-1.4, -24.2, 1.4, 1.2);
+      const fx = 7.5 + lunge * 1.5, fy = -12 + lunge * 5;
+      limb(c, 5.5, -18, fx, fy, 4, rock);
+      c.beginPath(); c.arc(fx, fy + 0.5, 3.4, 0, Math.PI * 2); inkFill(c, shade(rock, 0.05));
+      glowDot(c, fx, fy + 0.5, 3.2, 'rgba(255,150,60,0.7)', 'rgba(255,110,30,0)');
     }
   }
 
-  const HOVER = { mender: 1, gyro: 1, drake: 1 };   // hovering cancels the walk bob, so their frames ignore walking
+  const HOVER = { mender: 1, gyro: 1, drake: 1, griffin: 1 };   // hovering cancels the walk bob, so their frames ignore walking
 
   function poseOf(type, time, o) {
     const TAU = Math.PI * 2;
     const walkK = o.idle || HOVER[type] ? -1 : Math.floor((((o.walk != null ? o.walk : time * 10) % TAU) + TAU) % TAU / TAU * 8);
     const atkK = o.atk != null && o.atk < 1 ? Math.min(3, Math.floor(o.atk * 4)) : -1;
-    const flick = type === 'demo' || type === 'mage' || type === 'huntress' || type === 'drake' ? Math.floor(time * 9) & 1 : 0;
+    const flick = type === 'demo' || type === 'mage' || type === 'huntress' || type === 'drake' || type === 'golem' ? Math.floor(time * 9) & 1 : 0;
     const hovK = HOVER[type] ? Math.floor((((time * 3) % TAU) + TAU) % TAU / TAU * 8) : 0;
     const spinK = HOVER[type] ? Math.floor(time * 18) % 3 : 0;
     return {
@@ -2616,7 +2736,7 @@
   };
 
   // Portrait framing per troop: [feet position as a share of the height, drawing units across].
-  const ICON_FIT = { mage: [0.9, 38], lancer: [0.88, 40], gyro: [1.08, 34], colossus: [0.95, 54], marshal: [0.9, 40], huntress: [0.88, 34], vaulter: [0.86, 38], trebuchet: [0.88, 40], drake: [1.12, 40] };
+  const ICON_FIT = { mage: [0.9, 38], lancer: [0.88, 40], gyro: [1.08, 34], colossus: [0.95, 54], marshal: [0.9, 40], huntress: [0.88, 34], vaulter: [0.86, 38], trebuchet: [0.88, 40], drake: [1.12, 40], griffin: [1.14, 44], golem: [0.93, 58] };
   Spr.troopIcon = function (type, team, px) {
     px = px || 72;
     const key = 'troop|' + type + '|' + team + '|' + px;
