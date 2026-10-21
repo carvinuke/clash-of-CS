@@ -11,7 +11,7 @@ const ctx = { console: Object.assign({}, console, { warn: function () {} }), Mat
 ctx.window = ctx;
 ctx.localStorage = { getItem: k => store[k] ?? null, setItem: (k, v) => { store[k] = String(v); }, removeItem: k => { delete store[k]; } };
 vm.createContext(ctx);
-for (const f of ['config', 'util', 'base', 'research', 'army', 'economy', 'admin', 'state', 'pathfinding', 'battle', 'npc', 'goals', 'presets', 'threat', 'timesys'])
+for (const f of ['config', 'util', 'base', 'research', 'army', 'economy', 'admin', 'state', 'pathfinding', 'battle', 'npc', 'goals', 'events', 'presets', 'threat', 'timesys'])
   vm.runInContext(fs.readFileSync(path.join(root, 'js', f + '.js'), 'utf8'), ctx, { filename: f + '.js' });
 const CS = ctx.CS, C = CS.CONFIG, B = CS.Battle, TR = C.battle.tickRate;
 const MAXCORE = C.buildings.core.levels.length;

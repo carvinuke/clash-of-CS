@@ -133,7 +133,7 @@
     const barracks = Math.max(1, A.activeBarracks(state));
     let total = -state.army.progress;
     state.army.queue.forEach(function (q) { total += A.trainSeconds(state, q.type) * q.count; });
-    return Math.max(0, total / barracks);
+    return Math.max(0, total / barracks / CS.Events.mult(state, 'training', CS.Clock.now()));
   };
 
   // ---------------------------------------------------------------- heroes
@@ -242,7 +242,7 @@
   A.spellsRemaining = function (state) {
     let total = -state.spells.progress;
     state.spells.queue.forEach(function (q) { total += C.spells[q.type].time * q.count; });
-    return Math.max(0, total);
+    return Math.max(0, total / CS.Events.mult(state, 'training', CS.Clock.now()));
   };
 
   // Brewing pauses while the forge is upgrading or in ruins.

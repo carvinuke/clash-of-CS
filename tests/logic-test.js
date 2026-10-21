@@ -7,9 +7,12 @@ const ctx = { console: Object.assign({}, console, { warn: function () {} }), Mat
 ctx.window = ctx;
 ctx.localStorage = { getItem: k => store[k] ?? null, setItem: (k, v) => { store[k] = String(v); }, removeItem: k => { delete store[k]; } };
 vm.createContext(ctx);
-const files = ['config','util','base','research','army','economy','admin','state','pathfinding','battle','npc','goals','presets','threat','timesys'];
+const files = ['config','util','base','research','army','economy','admin','state','pathfinding','battle','npc','goals','events','presets','threat','timesys'];
 for (const f of files) vm.runInContext(fs.readFileSync(path.join(root, 'js', f + '.js'), 'utf8'), ctx, { filename: f + '.js' });
 const CS = ctx.CS;
+// Events follow the real clock; switch them off so the timing checks below are exact (the events section turns them on).
+const realSlot = CS.Events.slot;
+CS.Events.slot = function () { return null; };
 let fails = 0;
 function ok(cond, msg) { if (!cond) { fails++; console.log('FAIL:', msg); } else console.log('ok  :', msg); }
 
@@ -566,6 +569,109 @@ ok(CS.State.restore(good) && store[CS.CONFIG.saveKey] === good, 'restore writes 
   // every new building and troop has art hooks the renderer needs
   ok(['pyre', 'battery'].every(k => CS.CONFIG.buildMenu.some(m => m.items.includes(k))), 'new defenses are in the build menu');
   ok(CS.CONFIG.troopOrder.includes('griffin') && CS.CONFIG.troopOrder.includes('golem') && CS.Army.unlockLevel('griffin') === 9 && CS.Army.unlockLevel('golem') === 10, 'Griffin Knight unlocks at Barracks Lv 9, Magma Golem at Lv 10');
+}
+
+// ---------------------------------------------------------------- limited-time events
+{
+  const C = CS.CONFIG, E = C.events, H = 3600000, MS = E.slotHours * H;
+  ok(Object.keys(E.list).every(k => E.list[k].hours < E.slotHours && E.list[k].weight > 0), 'every event fits inside a schedule window');
+  ok(E.list.horde.bountyByCore.length === C.buildings.core.levels.length, 'horde bounty has one entry per Command Core level');
+  CS.Events.slot = realSlot;
+  let st = CS.State.newGame(now);
+  const k0 = Math.floor(now / MS);
+  let n = 0, hordes = 0, inside = true, same = true;
+  for (let k = k0; k < k0 + 4000; k++) {
+    const e = CS.Events.slot(st, k);
+    if (!e) continue;
+    n++; if (e.id === 'horde') hordes++;
+    inside = inside && e.start >= k * MS && e.end <= (k + 1) * MS && e.start % 60000 === 0;
+    same = same && JSON.stringify(CS.Events.slot(st, k)) === JSON.stringify(e);
+  }
+  ok(Math.abs(n / 4000 - E.chance) < 0.04 && hordes > 0, 'events roll in about ' + Math.round(E.chance * 100) + '% of windows (' + n + '/4000, ' + hordes + ' hordes)');
+  ok(inside && same, 'each event lies inside its window, starts on a minute and rolls the same every time');
+  const up = CS.Events.upcoming(st, now, 4);
+  ok(up.length === 4 && up.every((e, i) => e.end > now && (!i || e.start >= up[i - 1].end)), 'upcoming lists the next events in order');
+  const live = up[0].start <= now ? up[0] : null;
+  ok((CS.Events.at(st, now) || {}).key === (live || {}).key && CS.Events.at(st, up[up.length - 1].start).key === up[up.length - 1].key && !CS.Events.at(st, up[up.length - 1].end), 'Events.at agrees with the schedule at its edges');
+  st.settings.raidMode = 'off';
+  let noHorde = true;
+  for (let k = k0; k < k0 + 2000; k++) { const e = CS.Events.slot(st, k); if (e && e.id === 'horde') noHorde = false; }
+  ok(noHorde, 'no Raider Horde is rolled while raids are off');
+  const tLong = Date.now();
+  st = CS.State.newGame(now);
+  CS.Time.catchUp(st, now + 60 * 86400000, { allowRaids: true });
+  ok(Date.now() - tLong < 2000, '60-day catch-up with real events took ' + (Date.now() - tLong) + 'ms');
+
+  // force one event into a known window
+  function force(id, start) {
+    const def = E.list[id], k = Math.floor(start / MS);
+    CS.Events.slot = (s, kk) => kk === k ? { id: id, def: def, start: start, end: start + def.hours * H, key: k + ':' + id } : null;
+    return start + def.hours * H;
+  }
+  const base = (k0 + 10) * MS;
+  // Bumper Harvest: production doubles inside the window only
+  st = CS.State.newGame(base - H);
+  const mint = st.base.buildings.find(b => b.type === 'mint');
+  const rate = C.buildings.mint.levels[0].rate / 60;
+  force('harvest', base + H);
+  mint.stored = 0; st.lastTick = base;
+  CS.Eco.advance(st, base, base + 0.5 * H); st.lastTick = base + 0.5 * H;
+  const outside = mint.stored;
+  mint.stored = 0;
+  CS.Eco.advance(st, base + 0.5 * H, base + 1.5 * H);
+  ok(Math.abs(outside - rate * 1800) < 1 && Math.abs(mint.stored - rate * (1800 + 2 * 1800)) < 1, 'Bumper Harvest doubles generator output from its start (' + Math.round(outside) + ', ' + Math.round(mint.stored) + ')');
+  ok(CS.Events.mult(st, 'production', base + 2 * H) === 2 && CS.Events.mult(st, 'production', base + 6 * H) === 1, 'harvest multiplier ends with the event');
+  // War Drills: training twice as fast
+  force('drills', base);
+  st = CS.State.newGame(base);
+  st.army.units = {}; st.res.energy = 5000;
+  CS.Army.queueTroop(st, 'scout', 10);
+  const need = CS.Army.queueRemaining(st);
+  CS.Eco.advance(st, base, base + CS.Army.trainSeconds(st, 'scout') * 5 * 1000 / CS.Army.activeBarracks(st));
+  ok(st.army.units.scout === 10 && need > 0, 'War Drills train troops twice as fast (' + st.army.units.scout + ' of 10 in half the time)');
+  // Raider Horde: raids come faster, are marked as horde raids and repelling one pays a bounty
+  function meanGap(st) {
+    let tot = 0;
+    for (let i = 0; i < 400; i++) {
+      st.threat.next = null; st.threat.retaliations = [];
+      const p = CS.Threat.plan(st, base);
+      tot += p.at - Math.max(base, CS.Threat.eligibleFrom(st));
+    }
+    return tot / 400 / 60000;
+  }
+  st = CS.State.newGame(base - 3 * H);
+  st.stats.defended = 1; st.threat.protectionUntil = 0; st.threat.lastRaidAt = base - H;
+  CS.Events.slot = () => null;
+  const calm = meanGap(st);
+  force('horde', base);
+  const busy = meanGap(st);
+  st.threat.next = null;
+  const plan = CS.Threat.plan(st, base);
+  ok(busy < calm / 2 && plan.kind === 'horde', 'a Raider Horde brings raids about 3x as often (' + calm.toFixed(1) + ' -> ' + busy.toFixed(1) + ' min) as horde raids');
+  plan.at = base + 10 * 60000;
+  const battle = CS.Threat.buildDefense(st, plan, plan.at);
+  CS.Battle.runToEnd(battle);
+  const realResult = CS.Battle.result;
+  CS.Battle.result = b => Object.assign(realResult(b), { victory: false });
+  st.res.credits = st.res.energy = 0;
+  const rep2 = CS.Threat.applyDefense(st, battle, plan.at);
+  CS.Battle.result = realResult;
+  const amt = E.list.horde.bountyByCore[0];
+  ok(rep2.defended && rep2.bounty && rep2.bounty.credits === amt && st.res.credits === amt && /bounty/.test(st.log[0].text), 'repelling a horde raid pays the bounty (' + amt + ' each)');
+  // a raid drawn before a horde starts is re-drawn at the horde pace from its start
+  force('horde', base + 2 * H);
+  let early = 0;
+  for (let i = 0; i < 200; i++) { st.threat.next = null; st.threat.lastRaidAt = base - H; st.threat.shieldUntil = 0; if (CS.Threat.plan(st, base).at < base + 2.5 * H) early++; }
+  ok(early > 150, 'the horde pulls planned raids into its window (' + early + '/200 within 30 min of its start)');
+  // saves: the announced event survives a save, junk is repaired
+  st.events.seen = '12:frenzy';
+  let re = CS.State.sanitize(JSON.parse(JSON.stringify(st)), base);
+  ok(re.events.seen === '12:frenzy', 'announced event key survives a save');
+  const old = JSON.parse(JSON.stringify(st)); delete old.events;
+  ok(CS.State.sanitize(old, base).events.seen === '', 'old saves get an empty event record');
+  old.events = 'junk';
+  ok(CS.State.sanitize(old, base).events.seen === '', 'a damaged event record is reset');
+  CS.Events.slot = () => null;
 }
 
 console.log(fails ? fails + ' FAILURES' : 'ALL PASSED');

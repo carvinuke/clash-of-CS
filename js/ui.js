@@ -159,7 +159,8 @@
       '<span class="hb-sv"><b id="tbEng">0/0</b><small>Engineers</small></span></div>' +
       '<button class="hb-stat" data-act="army" data-tip="Army housing in use, plus troops still in training. Opens Army <kbd>T</kbd>">' + ic('army') +
       '<span class="hb-sv"><b id="tbArmy">0</b><small id="tbArmyL">Army</small></span></button>' +
-      '<div class="hb-stat shield hidden" id="tbShield">' + ic('shield') + '<span class="hb-sv"><b id="tbShieldT"></b><small id="tbShieldL"></small></span></div>';
+      '<div class="hb-stat shield hidden" id="tbShield">' + ic('shield') + '<span class="hb-sv"><b id="tbShieldT"></b><small id="tbShieldL"></small></span></div>' +
+      '<button class="hb-stat event hidden" id="tbEvent" data-act="events"><i class="ic" id="tbEventIc"></i><span class="hb-sv"><b id="tbEventT"></b><small id="tbEventL"></small></span></button>';
   }
 
   function resBox(r) {
@@ -195,6 +196,18 @@
     else if (C.attacks.modes[st.settings.raidMode].freq === 0) { label = 'Raids'; value = 'Off'; tip = 'NPC raids are turned off in Settings.'; }
     const shield = $('tbShield');
     shield.classList.toggle('hidden', !label);
+    const ev = CS.Events.at(st, t), evEl = $('tbEvent');
+    evEl.classList.toggle('hidden', !ev);
+    if (ev) {
+      if (evEl.dataset.key !== ev.key) {
+        evEl.dataset.key = ev.key;
+        evEl.dataset.tip = '<b>' + ev.def.name + '</b> ' + ev.def.desc + ' Opens Events';
+        evEl.style.setProperty('--ev', ev.def.color);
+        setHtml($('tbEventIc'), ICON[ev.def.icon]);
+        setText('tbEventL', ev.def.name);
+      }
+      setText('tbEventT', U.fmtTime((ev.end - t) / 1000));
+    }
     if (label) {
       setText('tbShieldT', value);
       setText('tbShieldL', label);
@@ -228,7 +241,7 @@
     const repair = Eco.repairAllCost(st) > 0;
     setHtml(el, '<span class="tc-crest">' + CS.Icons.crest(s.faction, fac.color) + '</span>' +
       '<div class="tc-main" data-tip="Upgrade or repair your defenses now. Building and moving are locked while raiders attack.">' +
-      '<span class="lbl">' + (n.kind === 'retaliation' ? 'Revenge raid' : 'Raid incoming') + '</span><b>' + esc(s.name) + '</b><small>' + esc(fac.name) + ' &middot; Tier ' + s.tier + '</small></div>' +
+      '<span class="lbl">' + (n.kind === 'retaliation' ? 'Revenge raid' : n.kind === 'horde' ? 'Horde raid' : 'Raid incoming') + '</span><b>' + esc(s.name) + '</b><small>' + esc(fac.name) + ' &middot; Tier ' + s.tier + '</small></div>' +
       '<div class="tc-time"><b id="tcTime"></b><small>until attack</small></div>' +
       '<div class="tc-act"><button class="sbtn" data-act="prepare">' + ic('shield') + 'Defenses</button>' +
       (repair ? '<button class="sbtn" data-act="repairAll">' + ic('wrench') + 'Repair</button>' : '') + '</div>');
@@ -705,7 +718,7 @@
     let queue = '<p class="hint">Nothing brewing.</p>', total = '';
     if (sp.queue.length) {
       const now = CS.Clock.now(), on = Base.isFunctional(f);
-      const need = C.spells[sp.queue[0].type].time, left = Math.max(0, need - sp.progress);
+      const x = CS.Events.mult(st, 'training', now), need = C.spells[sp.queue[0].type].time / x, left = Math.max(0, need - sp.progress / x);
       queue = sp.queue.map(function (e, i) {
         const name = esc(C.spells[e.type].name);
         let prog = '';
@@ -735,7 +748,7 @@
     }).join('');
     let queue = '<p class="hint">Nothing in training.</p>', total = '';
     if (st.army.queue.length) {
-      const now = CS.Clock.now(), per = Math.max(1, barracks);
+      const now = CS.Clock.now(), per = Math.max(1, barracks) * CS.Events.mult(st, 'training', now);
       const need = Army.trainSeconds(st, st.army.queue[0].type) / per;
       const left = Math.max(0, (Army.trainSeconds(st, st.army.queue[0].type) - st.army.progress) / per);
       queue = st.army.queue.map(function (e, i) {
@@ -1135,7 +1148,8 @@
         kv('Difficulty', '<b class="diff ' + diff.cls + '">' + diff.label + '</b><small>for your current army</small>') +
         (lg.npcBoost || lg.loot > 1 ? kv('League', '<span class="lgline"><i class="ic">' + CS.Icons.league(CS.League.index(st.player.renown)) + '</i>' + lg.name + '</span><small>' +
           (lg.npcBoost ? '+' + lg.npcBoost + ' defense level' + (lg.npcBoost > 1 ? 's' : '') + ', ' : '') + 'loot &times;' + lg.loot + '</small>') : '') +
-        kv('Available loot', costHtml(NPC.loot(st, s, t)) + '<small>+' + U.fmt(C.tiers[s.tier].bonus) + ' of each for a 3-star win</small>') +
+        kv('Available loot', costHtml(NPC.loot(st, s, t)) + '<small>+' + U.fmt(C.tiers[s.tier].bonus) + ' of each for a 3-star win</small>' +
+          (CS.Events.mult(st, 'loot', t) > 1 ? '<small class="good">' + ic('sack') + 'Loot Frenzy: everything you take is doubled</small>' : '')) +
         kv('Defenses', chips ? '<span class="dchips">' + chips + '</span>' : '<small>None</small>') +
         kv('Record', '<span><b>' + rec.wins + '</b> won &middot; <b>' + rec.losses + '</b> lost</span>' + (rec.stars ? stars(rec.stars) : '') + (rec.fortify ? '<small>Fortified &times;' + rec.fortify + ' after your victories</small>' : '')) +
         (rec.hostility ? kv('Hostility', pips(rec.hostility) + '<small>They may raid you in revenge.</small>', 'hostile') : '') +
@@ -1153,7 +1167,7 @@
   }
 
   // ----- log
-  const LOG_ICON = { info: 'info', world: 'scroll', defense: 'shield', raid: 'skull', victory: 'star', defeat: 'warn' };
+  const LOG_ICON = { info: 'info', world: 'scroll', defense: 'shield', raid: 'skull', victory: 'star', defeat: 'warn', event: 'bolt' };
   MODALS.log = function () {
     const st = G.state, s = st.stats;
     const cell = function (label, value) { return '<div class="lstat"><span class="lbl">' + label + '</span><b>' + value + '</b></div>'; };
@@ -1235,18 +1249,32 @@
     return '<div class="ractive idle">' + ic('clock') + '<span>New goals in ' + until(mid.getTime()) + '</span></div>' + rows + bonus;
   }
 
+  function eventsTab(st) {
+    const t = CS.Clock.now();
+    const rows = CS.Events.upcoming(st, t, 4).map(function (e) {
+      const live = e.start <= t, d = e.def;
+      const sub = esc(d.desc) + (d.bountyByCore ? ' Bounty: ' + costHtml({ credits: d.bountyByCore[Base.coreLevel(st) - 1], energy: d.bountyByCore[Base.coreLevel(st) - 1] }) + ' per raid.' : '');
+      const side = live ? '<span class="rmax ev-live">' + ic('bolt') + 'Live &middot; ends in ' + until(e.end) + '</span>'
+        : '<span class="rcost ev-when"><small>Starts in ' + until(e.start) + '</small><small>Lasts ' + U.fmtTime(d.hours * 3600) + '</small></span>';
+      return goalRow('<span class="ev-art" style="--ev:' + d.color + '">' + ic(d.icon) + '</span>', esc(d.name), sub, 0, 0, side, live ? 'ready' : '');
+    }).join('');
+    return (rows || '<p class="hint">No events on the horizon.</p>') +
+      '<p class="hint mfoot">Events start at random times, a few times a day, and keep running while the game is closed. ' +
+      (C.attacks.modes[st.settings.raidMode].freq > 0 ? '' : 'Raider Hordes only come while NPC raids are on in Settings.') + '</p>';
+  }
+
   MODALS.goals = function () {
     const st = G.state, t = CS.Clock.now();
     let achReady = 0, dayReady = 0;
     C.achievements.forEach(function (a) { const s = CS.Goals.achievement(st, a); achReady += s.done - s.claimed; });
     CS.Goals.daily(st, t).goals.forEach(function (g) { if (CS.Goals.dailyGoal(st, g).ready) dayReady++; });
     if (CS.Goals.bonusReady(st, t)) dayReady++;
-    const tabs = [['daily', 'Daily goals', dayReady], ['achievements', 'Achievements', achReady], ['league', 'League', 0]].map(function (x) {
+    const tabs = [['daily', 'Daily goals', dayReady], ['events', 'Events', 0], ['achievements', 'Achievements', achReady], ['league', 'League', 0]].map(function (x) {
       const on = UI.gtab === x[0];
       return '<button class="tab' + (on ? ' on' : '') + '" role="tab" aria-selected="' + on + '" data-act="gtab" data-tab="' + x[0] + '">' + x[1] + (x[2] ? ' <b class="tcount">' + x[2] + '</b>' : '') + '</button>';
     }).join('');
     const i = CS.League.index(st.player.renown);
-    const body = UI.gtab === 'league' ? leagueTab(st) : UI.gtab === 'achievements' ? achievementsTab(st) : dailyTab(st);
+    const body = UI.gtab === 'league' ? leagueTab(st) : UI.gtab === 'achievements' ? achievementsTab(st) : UI.gtab === 'events' ? eventsTab(st) : dailyTab(st);
     return head('Goals', 'star', false, hstat('renown', U.fmt(st.player.renown), C.leagues[i].name + ' League', '', 'Your trophies and league')) +
       '<div class="tabs" role="tablist">' + tabs + '</div><div class="mbody">' + body + '</div>';
   };
@@ -1411,6 +1439,7 @@
       '<div><span class="lbl">Raiders defeated</span><b>' + rep.killed + ' / ' + rep.raiders + '</b></div>' +
       '<div><span class="lbl">Stolen</span><b>' + (rep.stolen.credits + rep.stolen.energy ? costHtml(rep.stolen) : 'Nothing') + '</b></div>' +
       '<div><span class="lbl">Trophies</span><b class="' + (rep.renown > 0 ? 'good' : rep.renown < 0 ? 'bad' : '') + '">' + (rep.renown > 0 ? '+' : '') + rep.renown + '</b></div></div>' +
+      (rep.bounty ? '<div class="dr-line"><span class="lbl">Horde bounty</span><span>' + costHtml(rep.bounty) + '</span></div>' : '') +
       (lost ? '<div class="dr-line"><span class="lbl">Destroyed</span><span>' + lost + '</span></div>' : '') + top +
       (rep.heroes || []).map(function (g) {
         return '<div class="dr-line"><span class="lbl">Hero</span><span class="dr-top">' + troopImg(g.type, null, 40) + esc(C.troops[g.type].name) +
@@ -1675,7 +1704,7 @@
     const Bt = CS.Battle, s = NPC.def(b.attackerId), fac = NPC.faction(s), f = Bt.destruction(b);
     setHtml($('dhCrest'), CS.Icons.crest(s.faction, fac.color));
     setAttr($('dhWho'), 'data-tip', esc(fac.name) + ' &middot; Tier ' + s.tier);
-    setText('dhKind', b.meta.raidKind === 'retaliation' ? 'Revenge raid' : 'Raid in progress');
+    setText('dhKind', b.meta.raidKind === 'retaliation' ? 'Revenge raid' : b.meta.bounty ? 'Horde raid' : 'Raid in progress');
     setText('dhName', s.name);
     setText('dhTime', U.clockTime(Bt.timeLeft(b)));
     const dmg = $('dhDmg');
@@ -1754,6 +1783,7 @@
       cell('Command Core', res.coreDown ? 'Destroyed' : 'Standing') + cell('Battle time', U.fmtTime(res.seconds)) + '</div>' +
       '<div class="rs-cols"><section class="rs-box"><h4>Loot gained</h4><div class="rs-loot">' + loot + '</div>' +
       (r.bonus ? '<small>Includes a victory bonus of ' + U.fmt(r.bonus) + ' each.</small>' : '') +
+      (r.extra ? '<small class="good">Includes ' + costHtml(r.extra) + ' from the Loot Frenzy.</small>' : '') +
       (r.reward ? '<small class="good">Includes the boss reward of ' + U.fmt(r.reward.credits) + ' each.</small>' : '') +
       (r.wasted > 0 ? '<small class="bad">' + U.fmt(r.wasted) + ' could not be stored. Your storages are full.</small>' : '') +
       '<h4>Trophies</h4><div class="rs-renown ' + (r.renown > 0 ? 'up' : r.renown < 0 ? 'down' : '') + '">' + ic('renown') +
@@ -1879,6 +1909,7 @@
     log: function () { UI.open('log'); },
     goals: function () { UI.open('goals'); },
     stats: function () { UI.gtab = 'league'; UI.open('goals'); },
+    events: function () { UI.gtab = 'events'; UI.open('goals'); },
     settings: function () { UI.open('settings'); },
     closePanel: function () { G.select(null); },
     upgrade: function () { G.upgrade(G.sel); },

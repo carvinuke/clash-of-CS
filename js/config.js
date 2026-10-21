@@ -774,6 +774,28 @@
       }
     },
 
+    // ---------------------------------------------------------------- limited-time events
+    // Time is cut into windows of slotHours; each window holds an event with probability `chance`,
+    // picked by weight and placed at a random start inside the window. Effects multiply raid loot
+    // (loot), generator output (production), troop training and spell brewing (training) or the
+    // pace of NPC raids on your base (raids; never rolled while raids are off). A Raider Horde pays
+    // bountyByCore Credits and Energy (by Command Core level) for every raid you repel during it.
+    events: {
+      slotHours: 6,
+      chance: 0.6,
+      list: {
+        frenzy: { name: 'Loot Frenzy', icon: 'sack', color: '#f0c03a', hours: 3, weight: 3, loot: 2,
+          desc: 'Raid loot is doubled, victory bonus included.' },
+        harvest: { name: 'Bumper Harvest', icon: 'credits', color: '#6fcf4f', hours: 4, weight: 3, production: 2,
+          desc: 'Credit Mints and Energy Wells produce twice as fast.' },
+        drills: { name: 'War Drills', icon: 'army', color: '#5a9cf0', hours: 3, weight: 2, training: 2,
+          desc: 'Troops train and spells brew twice as fast.' },
+        horde: { name: 'Raider Horde', icon: 'skull', color: '#ff6b45', hours: 2, weight: 2, raids: 3,
+          bountyByCore: [400, 1000, 2500, 5000, 10000, 16000, 24000, 33000, 44000, 56000],
+          desc: 'Raiders strike three times as often. Every raid you repel pays a bounty.' }
+      }
+    },
+
     // ---------------------------------------------------------------- trophy leagues
     // Trophies (player.renown) decide the league. A higher league makes every NPC tougher
     // (npcBoost works like extra fortification levels and raids bring a bigger army) and richer.

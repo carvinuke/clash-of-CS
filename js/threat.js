@@ -32,6 +32,20 @@
     return cands[cands.length - 1] || null;
   }
 
+  // Random raids arrive at a steady rate that an event (Raider Horde) can raise: a draw that lands
+  // past the next event start or end is drawn again from there at the new rate.
+  function rollRaid(state, from, freq) {
+    let t = from, at = from;
+    for (let i = 0; i < 12; i++) {
+      const meanMin = 60 / (C.attacks.randomPerHour * freq * CS.Events.mult(state, 'raids', t));
+      at = t - Math.log(1 - Math.random()) * meanMin * 60000;
+      const change = CS.Events.nextChange(state, t);
+      if (!(change < at)) break;
+      t = change;
+    }
+    return at;
+  }
+
   // Plans the next raid if none is planned. Returns the plan (or null when raids are off).
   T.plan = function (state, from) {
     const th = state.threat;
@@ -50,13 +64,10 @@
     if (firstEver) {
       const d = C.attacks.firstRaidDelayMin;
       at = elig + U.lerp(d[0], d[1], Math.random()) * 60000;
-    } else {
-      const meanMin = 60 / (C.attacks.randomPerHour * freq);
-      at = elig - Math.log(1 - Math.random()) * meanMin * 60000;
-    }
+    } else at = rollRaid(state, elig, freq);
     if (!best || at < best.at) {
       const a = pickAttacker(state);
-      if (a) { best = { at: at, attackerId: a.id, kind: 'random' }; fromRetaliation = false; }
+      if (a) { best = { at: at, attackerId: a.id, kind: CS.Events.mult(state, 'raids', at) > 1 ? 'horde' : 'random' }; fromRetaliation = false; }
     }
     if (fromRetaliation) th.retaliations.shift();
     if (!best) return null;
@@ -154,7 +165,7 @@
       buildings: list, troops: {}, troopLevels: NPC.troopLevels(state),
       timeLimit: C.battle.defenseSeconds, maxDestruction: C.attacks.maxDestruction, guards: guards,
       defHpMult: CS.Research.mult(state, 'plating'), defDmgMult: CS.Research.mult(state, 'targeting'),
-      meta: { raidKind: plan.kind, army: army }
+      meta: { raidKind: plan.kind, army: army, bounty: plan.kind === 'horde' || CS.Events.mult(state, 'raids', now) > 1 }
     });
     CS.Battle.planAI(battle, army, 1.5);
     return battle;
@@ -207,6 +218,9 @@
     const rec = NPC.rec(state, s.id);
     rec.hostility = Math.max(0, rec.hostility - 1);
     const renown = defended ? 5 : -(3 + res.stars * 3);
+    // a Raider Horde pays a bounty for every raid repelled during it
+    const bountyAmt = defended && battle.meta.bounty ? C.events.list.horde.bountyByCore[Base.coreLevel(state) - 1] : 0;
+    const bounty = { credits: CS.Eco.add(state, 'credits', bountyAmt), energy: CS.Eco.add(state, 'energy', bountyAmt) };
     CS.Player.addRenown(state, renown);
     if (defended) state.stats.defended++; else state.stats.raided++;
     state.stats.stolen += stolen.credits + stolen.energy;
@@ -220,11 +234,12 @@
       raidKind: battle.meta.raidKind, defended: defended, stars: res.stars,
       destruction: res.destruction, stolen: stolen, destroyed: destroyed,
       raiders: sum(res.deployed), killed: sum(res.lost), top: top, renown: renown,
-      reason: res.reason, at: now, heroes: res.guards
+      reason: res.reason, at: now, heroes: res.guards, bounty: bountyAmt ? bounty : null
     };
     const pct = U.pct(res.destruction);
     CS.Log.add(state, defended ? 'defense' : 'raid', defended
-      ? 'You repelled a raid by ' + s.name + ' (' + pct + '% damage). ' + report.killed + ' raiders fell.'
+      ? 'You repelled a raid by ' + s.name + ' (' + pct + '% damage). ' + report.killed + ' raiders fell.' +
+        (bountyAmt ? ' Horde bounty: ' + U.fmt(bounty.credits) + ' Credits and ' + U.fmt(bounty.energy) + ' Energy.' : '')
       : s.name + ' raided your base: ' + pct + '% destroyed, ' + U.fmt(stolen.credits) + ' Credits and ' + U.fmt(stolen.energy) + ' Energy stolen.', now);
     return report;
   };

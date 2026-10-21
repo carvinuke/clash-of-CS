@@ -37,6 +37,7 @@
       },
       achievements: {},
       daily: { day: '', goals: [], bonus: 0 },
+      events: { seen: '' },             // key of the last event announced to the player
       log: [],
       tutorial: { step: 0, done: false },
       settings: { sfx: true, music: true, volume: 0.7, raidMode: 'normal', showGrid: false },
@@ -105,6 +106,7 @@
     s.player.bestLeague = Math.round(num(s.player.bestLeague, 0, 0, C.leagues.length - 1));
     Object.keys(fresh.stats).forEach(function (k) { s.stats[k] = num(s.stats[k], 0, 0); });
     CS.Goals.sanitize(s);
+    if (!s.events || typeof s.events !== 'object' || typeof s.events.seen !== 'string') s.events = { seen: '' };
     s.lastTick = num(s.lastTick, now, 0);
     if (s.lastTick > now) s.lastTick = now;      // clock moved backwards: never run time in reverse
 
