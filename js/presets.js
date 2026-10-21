@@ -28,22 +28,29 @@
       else if (type !== 'core' && n) spec.b[type] = [n, n, 1, 1];
     });
     const want = Object.keys(spec.b).reduce(function (n, t) { return n + spec.b[t][0]; }, 1);
-    let gen = [];
     const walls = spec.walls[0];
+    const nWalls = function (o) { return o.filter(function (b) { return b.type === 'wall'; }).length; };
+    let best = null;
     // A seed can leave a building without room; the next one usually fits everything. On a crowded
     // core level the inner walls can take that room, so fewer of them are tried (the rest ring the base).
+    // If the outer rings cannot take every remaining wall, the fitting layout that holds the most walls wins.
     search: for (let f = 1; f >= 0; f -= 0.25) {
       spec.walls = [Math.round(walls * f), Math.round(walls * f)];
       for (let seed = 7919 * core + 104729 * (i + 1), k = 0; k < 8; k++, seed++) {
-        gen = CS.NPC.generate(spec, 0, seed, Presets.STYLES[i].arch);
-        if (gen.filter(function (b) { return b.type !== 'wall'; }).length === want) break search;
+        const gen = CS.NPC.generate(spec, 0, seed, Presets.STYLES[i].arch);
+        if (gen.filter(function (b) { return b.type !== 'wall'; }).length !== want) { if (!best) best = gen.map(slot); continue; }
+        const out = gen.map(slot);
+        addOuterWalls(out, core, walls);
+        if (!best || nWalls(out) > nWalls(best) || best.length - nWalls(best) < want) best = out;
+        if (nWalls(out) === walls) break search;
+        break;   // fewer inner walls next, which leaves the outer rings more room
       }
     }
-    const out = gen.map(function (b) { return { type: b.type, x: b.x, y: b.y, rot: b.rot }; });
-    addOuterWalls(out, core, walls);
-    cache[key] = out;
+    cache[key] = best;
     return cache[key];
   };
+
+  function slot(b) { return { type: b.type, x: b.x, y: b.y, rot: b.rot }; }
 
   // The generator spends only part of a big wall allowance, so the rest becomes rings around the whole base.
   function addOuterWalls(out, core, allowed) {
@@ -55,9 +62,11 @@
       const s = Base.size(b.type, b.rot);
       r.x0 = Math.min(r.x0, b.x); r.y0 = Math.min(r.y0, b.y); r.x1 = Math.max(r.x1, b.x + s[0] - 1); r.y1 = Math.max(r.y1, b.y + s[1] - 1);
     });
-    for (let pad = 1; left > 0 && pad < S; pad += 2) {
+    // Rings outward from the buildings first; a base that already fills its area gets rings inside it instead.
+    for (let pad = 1; left > 0 && pad > -S / 2; pad = pad > 0 && pad + 2 < S ? pad + 2 : (pad > 0 ? -3 : pad - 4)) {
       const x0 = Math.max(area.x0, r.x0 - pad), y0 = Math.max(area.y0, r.y0 - pad);
       const x1 = Math.min(area.x1 - 1, r.x1 + pad), y1 = Math.min(area.y1 - 1, r.y1 + pad);
+      if (x1 - x0 < 2 || y1 - y0 < 2) break;
       for (let y = y0; y <= y1 && left > 0; y++) {
         for (let x = x0; x <= x1 && left > 0; x++) {
           if ((x !== x0 && x !== x1 && y !== y0 && y !== y1) || occ[y * S + x]) continue;

@@ -7,9 +7,10 @@
   const C = CS.CONFIG, U = CS.U, Base = CS.Base;
   const State = {};
 
+  // Tile offsets from the map centre.
   const STARTER_LAYOUT = [
-    ['core', 20, 20], ['mint', 15, 21], ['well', 26, 21], ['garrison', 20, 14],
-    ['barracks', 20, 26], ['station', 15, 16], ['station', 27, 16], ['vault', 16, 26], ['tank', 25, 26]
+    ['core', -2, -2], ['mint', -7, -1], ['well', 4, -1], ['garrison', -2, -8],
+    ['barracks', -2, 4], ['station', -7, -6], ['station', 5, -6], ['vault', -6, 4], ['tank', 3, 4]
   ];
 
   function blankState(now) {
@@ -48,7 +49,7 @@
   State.newGame = function (now) {
     const s = blankState(now);
     STARTER_LAYOUT.forEach(function (e) {
-      const b = Base.newBuilding(s, e[0], e[1], e[2], 0, 1, 'active');
+      const b = Base.newBuilding(s, e[0], C.grid.size / 2 + e[1], C.grid.size / 2 + e[2], 0, 1, 'active');
       if (C.buildings[e[0]].produces) b.stored = 120;
     });
     Object.keys(C.start.troops).forEach(function (t) { s.army.units[t] = C.start.troops[t]; });
@@ -65,6 +66,12 @@
     2: function (s) {
       if (s.player) { const r = Number(s.player.renown) || 0; s.player.bestRenown = r; s.player.bestLeague = CS.League.index(r); }
       s.version = 3;
+      return s;
+    },
+    // v4 grows the map from 44 to 48 tiles for Command Core 10, so the base moves 2 tiles to stay centred.
+    3: function (s) {
+      s.base.buildings.forEach(function (b) { if (b) { b.x = (Number(b.x) || 0) + 2; b.y = (Number(b.y) || 0) + 2; } });
+      s.version = 4;
       return s;
     }
   };
@@ -134,7 +141,7 @@
     const cores = kept.filter(function (b) { return b.type === 'core'; });
     s.base.buildings = kept.filter(function (b) { return b.type !== 'core' || b === cores[0]; });
     if (!cores.length) {
-      s.base.buildings.unshift({ id: s.base.nextId++, type: 'core', level: 1, x: 20, y: 20, rot: 0, status: 'active', timer: null, dmg: 0, ruined: false, stored: 0 });
+      s.base.buildings.unshift({ id: s.base.nextId++, type: 'core', level: 1, x: C.grid.size / 2 - 2, y: C.grid.size / 2 - 2, rot: 0, status: 'active', timer: null, dmg: 0, ruined: false, stored: 0 });
     }
 
     // Re-place anything overlapping or outside the build area.

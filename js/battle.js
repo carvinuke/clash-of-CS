@@ -392,8 +392,8 @@
       });
       if (second) points.push(second);
     }
-    const order = ['colossus', 'bruiser', 'lancer', 'vaulter', 'demo', 'scout', 'drake', 'gyro', 'trebuchet', 'mage', 'ranger', 'mender'];
-    const delays = { colossus: 0, bruiser: 0, lancer: 1.0, vaulter: 1.2, demo: 1.6, scout: 2.2, drake: 2.4, gyro: 2.6, trebuchet: 2.8, mage: 3.0, ranger: 3.4, mender: 3.8 };
+    const order = ['golem', 'colossus', 'bruiser', 'lancer', 'vaulter', 'demo', 'scout', 'drake', 'griffin', 'gyro', 'trebuchet', 'mage', 'ranger', 'mender'];
+    const delays = { golem: 0, colossus: 0, bruiser: 0, lancer: 1.0, vaulter: 1.2, demo: 1.6, scout: 2.2, drake: 2.4, griffin: 2.5, gyro: 2.6, trebuchet: 2.8, mage: 3.0, ranger: 3.4, mender: 3.8 };
     let n = 0;
     order.forEach(function (type) {
       const cnt = army[type] || 0;
@@ -475,6 +475,15 @@
     b._rt.units.delete(u.id);
     b._rt.anyDead = true;
     ev(b, { t: 'death', x: u.x, y: u.y, k: u.type });
+    const T = C.troops[u.type];
+    if (T.deathBlast) {
+      // the Magma Golem erupts where it falls, scorching every building nearby (walls included)
+      const dmg = T.blast[u.lv - 1];
+      b.buildings.forEach(function (c) {
+        if (!c.dead && !c.trap && U.distToRect(u.x, u.y, c.x, c.y, c.w, c.h) <= T.deathBlast) hurtBuilding(b, c, dmg);
+      });
+      ev(b, { t: 'boom', x: u.x, y: u.y, r: T.deathBlast, k: 'golem' });
+    }
   }
 
   function hurtGuard(b, g, dmg) {
@@ -959,7 +968,7 @@
         const tx = k ? U.clamp(t.x + (rnd(b) - 0.5) * A.spread, 0, S) : t.x, ty = k ? U.clamp(t.y + (rnd(b) - 0.5) * A.spread, 0, S) : t.y;
         b.proj.push({ id: b.nextId++, k: 'shell', x: cx, y: cy, sx: cx, sy: cy, tx: tx, ty: ty, tgt: 0, tb: 0, dmg: A.dmg, splash: A.splash, spd: 0, t: 0, dur: Math.max(1, A.flight + k * 3), src: d.id });
       }
-      ev(b, { t: 'fire', id: d.id, k: A.kind, x: cx, y: cy });
+      ev(b, { t: 'fire', id: d.id, k: A.kind, ty: d.type, x: cx, y: cy });
       return;
     }
     if (A.kind === 'rail' && d.cd === 0) t = pickToughest(b, A, cx, cy);
@@ -983,14 +992,14 @@
         const dx = u.x - cx, dy = u.y - cy, dl = Math.hypot(dx, dy);
         if (dl <= A.range && (dl < 0.5 || (dx * ax + dy * ay) / (dl * al) >= A.cone)) hurtUnit(b, u, A.dmg, d);
       });
-      ev(b, { t: 'breath', id: d.id, x0: cx, y0: cy, x: cx + ax / al * A.range, y: cy + ay / al * A.range, k: 'idol' });
+      ev(b, { t: 'breath', id: d.id, x0: cx, y0: cy, x: cx + ax / al * A.range, y: cy + ay / al * A.range, k: d.type });
       return;
     }
     const targets = A.shots > 1 ? pickSeveral(b, A, cx, cy, A.shots) : [t];
     targets.forEach(function (u) {
       b.proj.push({ id: b.nextId++, k: PROJ[A.kind] || 'bolt', x: cx, y: cy, sx: cx, sy: cy, tx: 0, ty: 0, tgt: u.id, tb: 0, dmg: A.dmg, splash: A.splash, spd: A.speed, t: 0, dur: 0, src: d.id });
     });
-    ev(b, { t: 'fire', id: d.id, k: A.kind, x: cx, y: cy });
+    ev(b, { t: 'fire', id: d.id, k: A.kind, ty: d.type, x: cx, y: cy });
   }
 
   // ---------------------------------------------------------------- projectiles

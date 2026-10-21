@@ -19,24 +19,24 @@ ok(s.base.buildings.length === 9, 'starter base has 9 buildings');
 ok(CS.Army.capacity(s) === 20 && CS.Army.armySpace(s) === 10, 'army capacity 20, used 10');
 // Placement rules
 const occ = CS.Base.occupancy(s.base.buildings);
-ok(!CS.Base.canPlaceAt(s, 'blaster', 20, 20, 0).ok, 'cannot place on the core');
-ok(!CS.Base.canPlaceAt(s, 'blaster', 2, 2, 0).ok, 'cannot place outside build area');
-ok(CS.Base.canPlaceAt(s, 'blaster', 12, 26, 0).ok, 'can place blaster at free spot');
+ok(!CS.Base.canPlaceAt(s, 'blaster', 22, 22, 0).ok, 'cannot place on the core');
+ok(!CS.Base.canPlaceAt(s, 'blaster', 4, 4, 0).ok, 'cannot place outside build area');
+ok(CS.Base.canPlaceAt(s, 'blaster', 14, 28, 0).ok, 'can place blaster at free spot');
 const credits0 = s.res.credits;
-let r = CS.Eco.place(s, 'blaster', 12, 26, 0, now);
+let r = CS.Eco.place(s, 'blaster', 14, 28, 0, now);
 ok(r.ok && s.res.credits === credits0 - 250, 'blaster placed and 250 credits deducted');
 ok(r.b.status === 'building' && r.b.level === 0, 'blaster under construction');
-r = CS.Eco.place(s, 'blaster', 12, 26, 0, now);
+r = CS.Eco.place(s, 'blaster', 14, 28, 0, now);
 ok(!r.ok, 'second blaster at same spot rejected: ' + r.reason);
 // Engineers: 2 stations -> second construction allowed, third blocked
-let sp = CS.Base.findFreeSpot(s, 'mint', 0, 20, 20);
+let sp = CS.Base.findFreeSpot(s, 'mint', 0, 22, 22);
 r = CS.Eco.place(s, 'mint', sp.x, sp.y, 0, now);
 ok(r.ok, 'second mint placed (2nd engineer)');
-sp = CS.Base.findFreeSpot(s, 'well', 0, 20, 20);
+sp = CS.Base.findFreeSpot(s, 'well', 0, 22, 22);
 r = CS.Eco.place(s, 'well', sp.x, sp.y, 0, now);
 ok(!r.ok && /Engineer/.test(r.reason), 'third construction blocked: ' + r.reason);
 // Walls are instant
-r = CS.Eco.place(s, 'wall', 11, 11, 0, now);
+r = CS.Eco.place(s, 'wall', 13, 13, 0, now);
 ok(r.ok && r.b.level === 1 && r.b.status === 'active', 'wall instant');
 // Advance 20s: constructions finish
 CS.Time.step(s, now + 20000);
@@ -121,15 +121,15 @@ raid(CS.NPC.def('glimmerfen'), { lancer: 8, gyro: 6, colossus: 1, ranger: 10 });
   }
 }
 
-// Command Core Lv 7-9: every per-core table covers all core levels, and level gates stay within them.
+// Command Core Lv 7-10: every per-core table covers all core levels, and level gates stay within them.
 {
   const C = CS.CONFIG, maxCore = C.buildings.core.levels.length;
-  ok(maxCore === 9, 'Command Core has 9 levels');
+  ok(maxCore === 10, 'Command Core has 10 levels');
   const short = Object.keys(C.buildings).filter(t => C.buildings[t].max.length !== maxCore);
   ok(!short.length, 'every building has a limit for each core level ' + short.join(','));
   const gates = Object.keys(C.buildings).filter(t => C.buildings[t].levels.some(L => L.core > maxCore));
   ok(!gates.length, 'no level needs a core level that does not exist ' + gates.join(','));
-  ok([C.grid.buildAreaByCore, C.attacks.armySpaceByCore, C.attacks.troopLevelByCore, C.attacks.steal.capByCore].every(a => a.length === maxCore), 'per-core tables have 9 entries');
+  ok([C.grid.buildAreaByCore, C.attacks.armySpaceByCore, C.attacks.troopLevelByCore, C.attacks.steal.capByCore].every(a => a.length === maxCore), 'per-core tables have an entry per core level');
   for (const h of C.heroOrder) {
     const n = C.buildings[C.heroes[h].building].levels.length, T = C.troops[h], A = C.heroes[h].ability;
     ok(T.hp.length === n && T.dmg.length === n && C.heroes[h].recoverMin.length === n && A.sec.length === n && A.heal.length === n && (!A.summonN || A.summonN.length === n), h + ' has stats for all ' + n + ' home levels');
@@ -141,7 +141,12 @@ raid(CS.NPC.def('glimmerfen'), { lancer: 8, gyro: 6, colossus: 1, ranger: 10 });
   CS.Base.newBuilding(g, 'bunker', 12, 12, 0, 1, 'active');
   const cap1 = CS.Eco.capacity(g);
   ok(cap1.credits > cap0.credits && cap1.energy > cap0.energy, 'Reserve Bunker raises both storage caps');
-  ok(CS.NPC.unlockedTier(g) === 1 && CS.CONFIG.tiers.length === 7, 'tier 6 exists and starts hidden');
+  ok(CS.NPC.unlockedTier(g) === 1 && CS.CONFIG.tiers.length === 9, 'tiers 7 and 8 exist and start hidden');
+  ok(CS.Base.maxCount('wall', 10) === 300 && CS.Base.buildArea(10).size === 46 && CS.Base.buildArea(10).x0 === 1, 'core 10: 300 walls and a 46x46 build area inside the 48-tile map');
+  const lvShort = C.troopOrder.filter(t => C.troops[t].hp.length < C.research.troops[t].cost.length + 1 || C.troops[t].dmg.length < C.troops[t].hp.length || C.troops[t].cost.length < C.troops[t].hp.length);
+  ok(!lvShort.length, 'every troop has stats for every research level ' + lvShort.join(','));
+  const spShort = C.spellOrder.filter(k => Object.keys(C.spells[k]).some(f => Array.isArray(C.spells[k][f]) && C.spells[k][f].length < C.buildings.forge.levels.length));
+  ok(!spShort.length, 'every spell has stats for every Forge level ' + spShort.join(','));
 }
 
 // New defenses: the Skyburst Battery only hits flyers, the Sky Snare only triggers on flyers,
@@ -506,6 +511,61 @@ ok(CS.State.restore(good) && store[CS.CONFIG.saveKey] === good, 'restore writes 
   const bad = CS.State.newGame(t); bad.daily = { day: 'x', goals: [{ id: 'nope' }], bonus: 3 }; bad.achievements = { raider: 9, fake: 1 };
   const sb = CS.State.sanitize(JSON.parse(JSON.stringify(bad)), t);
   ok(sb.daily.day === '' && sb.daily.goals.length === 0 && sb.achievements.raider === 3 && !('fake' in sb.achievements), 'sanitize repairs goal data');
+}
+
+// Command Core 10: the bigger map migrates old saves, and the new defenses and troops behave as described.
+{
+  const t = Date.UTC(2026, 9, 21, 12);
+  const old = CS.State.newGame(t);
+  old.base.buildings.forEach(b => { b.x -= 2; b.y -= 2; });     // where the starter base sat on the old 44-tile map
+  old.version = 3;
+  const before = old.base.buildings.map(b => [b.id, b.x, b.y]);
+  const mig = CS.State.sanitize(JSON.parse(JSON.stringify(old)), t);
+  ok(mig.version === CS.CONFIG.saveVersion && before.every(e => { const b = mig.base.buildings.find(q => q.id === e[0]); return b && b.x === e[1] + 2 && b.y === e[2] + 2; }),
+    'v3 saves move their base 2 tiles to stay centred on the 48-tile map');
+  const core = CS.Base.core(mig);
+  ok(core.x === 22 && core.y === 22, 'the starter core sits in the middle of the map (' + core.x + ',' + core.y + ')');
+
+  const field = (type, level) => [{ id: 1, type: 'core', level: 1, x: 22, y: 22, w: 4, h: 4 }, { id: 2, type, level: level || 1, x: 16, y: 23, w: 3, h: 3 }];
+  const mk = (type, troops, lv) => CS.Battle.create({ kind: 'attack', seed: 5, timeLimit: 150, troops, troopLevels: lv || {}, buildings: field(type) });
+  // Pyre Projector burns ground and air troops in front of it
+  let b = mk('pyre', { scout: 4, gyro: 2 });
+  for (let i = 0; i < 4; i++) CS.Battle.deploy(b, 'scout', 10.5, 23 + i * 0.5);
+  for (let i = 0; i < 2; i++) CS.Battle.deploy(b, 'gyro', 10.5, 24 + i * 0.5);
+  CS.Battle.runToEnd(b);
+  let res = CS.Battle.result(b);
+  ok(res.dmg.pyre > 0 && res.lost.scout > 0 && res.lost.gyro > 0, 'Pyre Projector burns ground and air troops (' + JSON.stringify(res.lost) + ')');
+  // Ironfall Battery shells ground crowds but never flyers
+  b = mk('battery', { gyro: 3 });
+  for (let i = 0; i < 3; i++) CS.Battle.deploy(b, 'gyro', 8.5, 23 + i * 0.4);
+  CS.Battle.runToEnd(b);
+  ok(!CS.Battle.result(b).dmg.battery, 'Ironfall Battery cannot hit flyers');
+  b = mk('battery', { ranger: 12 });
+  for (let i = 0; i < 12; i++) CS.Battle.deploy(b, 'ranger', 7.5, 21 + i * 0.4);
+  let shells = 0;
+  for (let i = 0; i < 300; i++) { CS.Battle.fastForward(b, 1); shells = Math.max(shells, b.proj.filter(q => q.src === 2).length); }
+  ok(shells === 3, 'Ironfall Battery fires three shells per salvo (' + shells + ')');
+  // Griffin Knights fly over walls and dive on defenses; the first strike on each target is a charge
+  const walled = field('blaster').concat(Array.from({ length: 12 }, (_, k) => ({ id: 10 + k, type: 'wall', level: 9, x: 14, y: 18 + k, w: 1, h: 1 })));
+  b = CS.Battle.create({ kind: 'attack', seed: 5, timeLimit: 150, troops: { griffin: 2 }, troopLevels: {}, buildings: walled });
+  CS.Battle.deploy(b, 'griffin', 6.5, 23); CS.Battle.deploy(b, 'griffin', 6.5, 24);
+  CS.Battle.runToEnd(b);
+  res = CS.Battle.result(b);
+  ok(b.buildings.find(c => c.type === 'blaster').dead && b.buildings.filter(c => c.wall).every(c => !c.dead), 'Griffin Knights fly over walls to destroy a Blaster Turret');
+  // Magma Golem: when it falls it erupts and damages the buildings around it
+  b = CS.Battle.create({ kind: 'attack', seed: 5, timeLimit: 150, troops: { golem: 1 }, troopLevels: { golem: 2 }, buildings: field('blaster', 9) });
+  CS.Battle.deploy(b, 'golem', 13, 24);
+  CS.Battle.begin(b);
+  let g = null;
+  for (let i = 0; i < 2000 && !g; i++) { CS.Battle.fastForward(b, 1); const u = b.units.find(q => q.type === 'golem'); if (u && CS.U.distToRect(u.x, u.y, 16, 23, 3, 3) < 1) g = u; }
+  const tur = b.buildings.find(c => c.type === 'blaster'), hp0 = tur.hp;
+  g.hp = 1;
+  b.buildings.find(c => c.type === 'blaster').cd = 0;
+  for (let i = 0; i < 60 && !g.dead; i++) CS.Battle.fastForward(b, 1);
+  ok(g.dead && hp0 - tur.hp >= CS.CONFIG.troops.golem.blast[1], 'a falling Magma Golem erupts and scorches the turret (' + Math.round(hp0 - tur.hp) + ' dmg)');
+  // every new building and troop has art hooks the renderer needs
+  ok(['pyre', 'battery'].every(k => CS.CONFIG.buildMenu.some(m => m.items.includes(k))), 'new defenses are in the build menu');
+  ok(CS.CONFIG.troopOrder.includes('griffin') && CS.CONFIG.troopOrder.includes('golem') && CS.Army.unlockLevel('griffin') === 9 && CS.Army.unlockLevel('golem') === 10, 'Griffin Knight unlocks at Barracks Lv 9, Magma Golem at Lv 10');
 }
 
 console.log(fails ? fails + ' FAILURES' : 'ALL PASSED');

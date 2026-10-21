@@ -875,7 +875,7 @@
     if (c.frz > 0) info.frozen = true;
   }
 
-  const MUZZLE = { blaster: [1.25, 29], mortar: [0.45, 38], flak: [0.55, 50], rail: [1.6, 40], volley: [0.95, 64], barrage: [0.6, 64], cone: [1.6, 44] };   // barrel length (tiles), muzzle height
+  const MUZZLE = { blaster: [1.25, 29], mortar: [0.45, 38], flak: [0.55, 50], rail: [1.6, 40], volley: [0.95, 64], barrage: [0.6, 64], cone: [1.6, 44], battery: [1, 52] };   // barrel length (tiles), muzzle height, by attack kind or building type
 
   function idleAngle(id) { return Math.sin(G.time * 0.35 + id * 1.7) * 1.4 + 0.8; }
 
@@ -1153,7 +1153,7 @@
         case 'fire': {
           R.recoil(e.id);
           const a = R.aimOf(e.id);
-          const M = MUZZLE[e.k];
+          const M = MUZZLE[e.ty] || MUZZLE[e.k];
           if (a != null && M) {
             const dx = Math.cos(a), dy = Math.sin(a);
             R.emit('muzzle', e.x + dx * M[0], e.y + dy * M[0], M[1], { dx: dx, dy: dy });
@@ -1163,10 +1163,11 @@
         }
         case 'boom':
           if (e.k === 'drake') { R.emit('breath', e.x0, e.y0, 26, { x: e.x, y: e.y, z: 6 }); sfx('flame'); }
-          R.emit('boom', e.x, e.y, e.k === 'flak' ? 30 : 4, { r: e.r, col: e.k === 'mine' ? '#ffe36e' : undefined });
+          R.emit('boom', e.x, e.y, e.k === 'flak' ? 30 : 4, { r: e.r, col: e.k === 'mine' ? '#ffe36e' : e.k === 'golem' ? '#ff8a3a' : undefined });
+          if (e.k === 'golem') R.emit('shock', e.x, e.y, 0, { r: e.r * 0.6, shake: 3 });
           if (e.k !== 'drake') sfx(e.k === 'shell' ? 'mortarHit' : 'boom');
           break;
-        case 'breath': R.recoil(e.id); R.emit('breath', e.x0, e.y0, 40, { x: e.x, y: e.y, z: 10, wide: 1 }); sfx('flame'); break;
+        case 'breath': R.recoil(e.id); R.emit('breath', e.x0, e.y0, e.k === 'pyre' ? 39 : 40, { x: e.x, y: e.y, z: 10, wide: 1 }); sfx('flame'); break;
         case 'chain': {
           const pts = [[e.pts[0], e.pts[1], 70]];
           for (let i = 2; i < e.pts.length; i += 2) pts.push([e.pts[i], e.pts[i + 1], 14]);

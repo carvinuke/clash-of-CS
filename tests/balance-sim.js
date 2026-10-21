@@ -45,11 +45,13 @@ function mixedArmy(P) {
   const has = t => P.unlocked.includes(t), army = {};
   let left = P.cap;
   const add = (t, n) => { n = Math.min(n, Math.floor(left / C.troops[t].space)); if (n > 0) { army[t] = (army[t] || 0) + n; left -= n * C.troops[t].space; } };
-  if (has('colossus')) add('colossus', Math.floor(P.cap * 0.25 / 18));
+  if (has('golem')) add('golem', Math.floor(P.cap * 0.15 / 25));
+  if (has('colossus')) add('colossus', Math.floor(P.cap * (has('golem') ? 0.12 : 0.25) / 18));
   if (has('bruiser')) add('bruiser', Math.max(1, Math.floor(P.cap * (has('colossus') ? 0.1 : 0.25) / 5)));
   if (has('demo')) add('demo', Math.max(1, Math.round(P.cap / 25)));
   if (has('mender') && P.cap >= 60) add('mender', 1);
   if (has('drake')) add('drake', Math.floor(P.cap * 0.2 / 16));
+  if (has('griffin')) add('griffin', Math.floor(P.cap * 0.12 / 8));
   const dps = ['mage', 'lancer', 'vaulter', 'ranger', 'trebuchet'].filter(has);
   let k = 0, guard = 999;
   const pool = dps.length ? dps : ['scout'];
